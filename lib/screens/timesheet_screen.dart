@@ -29,11 +29,15 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
     final visibleProjects = user == null
         ? <Project>[]
         : dataService.getProjectsVisibleForUser(user);
+    final hasVacationProject = dataService.projects
+        .where((project) => project.isActive)
+        .any(dataService.isVacationProject);
 
     final todayEntries = dataService.getEntriesForDate(userId, _selectedDate)
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     final dailyTotal = dataService.getDailyHours(userId, _selectedDate);
-    final canAddEntry = dailyTotal < 8.0 && visibleProjects.isNotEmpty;
+    final canAddEntry =
+        dailyTotal < 8.0 && (visibleProjects.isNotEmpty || hasVacationProject);
 
     final monthStart = DateTime(_selectedDate.year, _selectedDate.month, 1);
     final monthEnd = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
@@ -82,186 +86,197 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
         decoration: const BoxDecoration(
           gradient: AppTheme.appBackgroundGradient,
         ),
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Column(
-                  children: [
-                    _HeroCard(
-                      selectedDate: _selectedDate,
-                      dailyTotal: dailyTotal,
-                      isWorkingDay: isWorkingDay,
-                      onPreviousDay: () {
-                        setState(() {
-                          _selectedDate = _selectedDate.subtract(
-                            const Duration(days: 1),
-                          );
-                        });
-                      },
-                      onNextDay: () {
-                        setState(() {
-                          _selectedDate = _selectedDate.add(
-                            const Duration(days: 1),
-                          );
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    AnimatedReveal(
-                      delay: const Duration(milliseconds: 70),
-                      child: _PerformanceSnapshotCard(
-                        completionRate: completionRate,
-                        monthlyXp: monthlyXp,
-                        streak: streak,
-                        perfectDays: perfectDays,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            final auth = context.read<AuthService>();
+            final data = context.read<DataService>();
+            await auth.refreshCurrentUserFromRemote();
+            await data.refreshFromRemote();
+          },
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Column(
+                    children: [
+                      _HeroCard(
+                        selectedDate: _selectedDate,
+                        dailyTotal: dailyTotal,
+                        isWorkingDay: isWorkingDay,
+                        onPreviousDay: () {
+                          setState(() {
+                            _selectedDate = _selectedDate.subtract(
+                              const Duration(days: 1),
+                            );
+                          });
+                        },
+                        onNextDay: () {
+                          setState(() {
+                            _selectedDate = _selectedDate.add(
+                              const Duration(days: 1),
+                            );
+                          });
+                        },
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _MetricCard(
-                            title: 'Streak',
-                            value: '$streak giorni',
-                            icon: Icons.local_fire_department,
-                            gradient: AppTheme.sunriseGradient,
+                      const SizedBox(height: 14),
+                      AnimatedReveal(
+                        delay: const Duration(milliseconds: 70),
+                        child: _PerformanceSnapshotCard(
+                          completionRate: completionRate,
+                          monthlyXp: monthlyXp,
+                          streak: streak,
+                          perfectDays: perfectDays,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _MetricCard(
+                              title: 'Streak',
+                              value: '$streak giorni',
+                              icon: Icons.local_fire_department,
+                              gradient: AppTheme.sunriseGradient,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _MetricCard(
-                            title: 'XP mese',
-                            value: '$monthlyXp pt',
-                            icon: Icons.stars,
-                            gradient: AppTheme.emeraldGradient,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _MetricCard(
+                              title: 'XP mese',
+                              value: '$monthlyXp pt',
+                              icon: Icons.stars,
+                              gradient: AppTheme.emeraldGradient,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    _InfoTile(
-                      title: 'Reward progresso',
-                      subtitle:
-                          '$perfectDays giorni perfetti su $workingDaysInMonth lavorativi',
-                      icon: Icons.emoji_events_outlined,
-                      trailing: '${(completionRate * 100).round()}%',
-                      progress: completionRate,
-                    ),
-                    const SizedBox(height: 10),
-                    _InfoTile(
-                      title: isSalaryDay
-                          ? 'Oggi e\' il giorno stipendio'
-                          : 'Stipendio del mese',
-                      subtitle:
-                          'Ultimo lavorativo: ${DateFormat('EEEE d MMMM', 'it').format(salaryDay)}',
-                      icon: Icons.account_balance_wallet_outlined,
-                      trailing: isSalaryDay ? 'oggi' : 'in arrivo',
-                      gradient: AppTheme.sunriseGradient,
-                    ),
-                    const SizedBox(height: 10),
-                    const _InfoTile(
-                      title: 'Notifiche attive',
-                      subtitle:
-                          'Promemoria automatico alle 18:00 nei giorni lavorativi',
-                      icon: Icons.notifications_active_outlined,
-                      trailing: 'ON',
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Timeline del giorno',
-                          style: AppTheme.heading3,
-                        ),
-                        TextButton.icon(
-                          onPressed: !canAddEntry
-                              ? null
-                              : () {
-                                  _openEntrySheet(
-                                    context: context,
-                                    date: _selectedDate,
-                                  );
-                                },
-                          icon: const Icon(Icons.add_circle_outline),
-                          label: const Text('Aggiungi'),
-                        ),
-                      ],
-                    ),
-                    if (visibleProjects.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Nessun progetto assegnato: chiedi a TL/Manager di assegnarti un progetto.',
-                            style: AppTheme.bodySmall.copyWith(
-                              color: AppTheme.warningColor,
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _InfoTile(
+                        title: 'Reward progresso',
+                        subtitle:
+                            '$perfectDays giorni perfetti su $workingDaysInMonth lavorativi',
+                        icon: Icons.emoji_events_outlined,
+                        trailing: '${(completionRate * 100).round()}%',
+                        progress: completionRate,
+                      ),
+                      const SizedBox(height: 10),
+                      _InfoTile(
+                        title: isSalaryDay
+                            ? 'Oggi e\' il giorno stipendio'
+                            : 'Stipendio del mese',
+                        subtitle:
+                            'Ultimo lavorativo: ${DateFormat('EEEE d MMMM', 'it').format(salaryDay)}',
+                        icon: Icons.account_balance_wallet_outlined,
+                        trailing: isSalaryDay ? 'oggi' : 'in arrivo',
+                        gradient: AppTheme.sunriseGradient,
+                      ),
+                      const SizedBox(height: 10),
+                      const _InfoTile(
+                        title: 'Notifiche attive',
+                        subtitle:
+                            'Promemoria automatico alle 18:00 nei giorni lavorativi',
+                        icon: Icons.notifications_active_outlined,
+                        trailing: 'ON',
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Timeline del giorno',
+                            style: AppTheme.heading3,
+                          ),
+                          TextButton.icon(
+                            onPressed: !canAddEntry
+                                ? null
+                                : () {
+                                    _openEntrySheet(
+                                      context: context,
+                                      date: _selectedDate,
+                                    );
+                                  },
+                            icon: const Icon(Icons.add_circle_outline),
+                            label: const Text('Aggiungi'),
+                          ),
+                        ],
+                      ),
+                      if (visibleProjects.isEmpty && !hasVacationProject)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Nessun progetto assegnato: chiedi a TL/Manager di assegnarti un progetto.',
+                              style: AppTheme.bodySmall.copyWith(
+                                color: AppTheme.warningColor,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    const SizedBox(height: 10),
-                  ],
+                      const SizedBox(height: 10),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            if (todayEntries.isEmpty)
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  child: _EmptyState(),
-                ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                sliver: SliverList.builder(
-                  itemCount: todayEntries.length,
-                  itemBuilder: (context, index) {
-                    final entry = todayEntries[index];
-                    final project = dataService.getProjectById(entry.projectId);
+              if (todayEntries.isEmpty)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    child: _EmptyState(),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  sliver: SliverList.builder(
+                    itemCount: todayEntries.length,
+                    itemBuilder: (context, index) {
+                      final entry = todayEntries[index];
+                      final project = dataService.getProjectById(
+                        entry.projectId,
+                      );
 
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: AnimatedReveal(
-                        delay: Duration(milliseconds: 70 + (index * 45)),
-                        beginOffset: const Offset(0.08, 0),
-                        child: _EntryCard(
-                          entry: entry,
-                          project: project,
-                          onDelete: () async {
-                            await dataService.deleteTimesheetEntry(entry.id);
-                          },
-                          onEdit: () {
-                            _openEntrySheet(
-                              context: context,
-                              date: _selectedDate,
-                              entry: entry,
-                            );
-                          },
-                          onProjectTap: project == null
-                              ? null
-                              : () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => ProjectDetailScreen(
-                                        projectId: project.id,
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: AnimatedReveal(
+                          delay: Duration(milliseconds: 70 + (index * 45)),
+                          beginOffset: const Offset(0.08, 0),
+                          child: _EntryCard(
+                            entry: entry,
+                            project: project,
+                            onDelete: () async {
+                              await dataService.deleteTimesheetEntry(entry.id);
+                            },
+                            onEdit: () {
+                              _openEntrySheet(
+                                context: context,
+                                date: _selectedDate,
+                                entry: entry,
+                              );
+                            },
+                            onProjectTap: project == null
+                                ? null
+                                : () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => ProjectDetailScreen(
+                                          projectId: project.id,
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                },
+                                    );
+                                  },
+                          ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
-              ),
-            SliverToBoxAdapter(child: SizedBox(height: 24 + bottomInset)),
-          ],
+              SliverToBoxAdapter(child: SizedBox(height: 24 + bottomInset)),
+            ],
+          ),
         ),
       ),
     );

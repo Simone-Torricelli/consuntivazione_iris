@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,12 @@ class DataService extends ChangeNotifier {
   List<Project> _projects = [];
   List<TimesheetEntry> _timesheetEntries = [];
   bool _isLoading = false;
+  StreamSubscription<List<User>>? _usersSubscription;
+  StreamSubscription<List<Project>>? _projectsSubscription;
+  StreamSubscription<List<TimesheetEntry>>? _timesheetSubscription;
+  final StreamController<int> _realtimeTickController =
+      StreamController<int>.broadcast();
+  int _realtimeTick = 0;
 
   final FirebaseSyncService _firebaseSync = FirebaseSyncService();
 
@@ -21,6 +28,8 @@ class DataService extends ChangeNotifier {
   List<Project> get projects => _projects;
   List<TimesheetEntry> get timesheetEntries => _timesheetEntries;
   bool get isLoading => _isLoading;
+  Stream<int> get realtimeTickStream => _realtimeTickController.stream;
+  int get realtimeTick => _realtimeTick;
 
   static const String _usersKey = 'users';
   static const String _projectsKey = 'projects';
@@ -28,6 +37,7 @@ class DataService extends ChangeNotifier {
 
   Future<void> initialize() async {
     _isLoading = true;
+    _cancelRealtimeListeners();
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -35,6 +45,7 @@ class DataService extends ChangeNotifier {
       var hasRemoteData = false;
       if (_firebaseSync.isEnabled) {
         hasRemoteData = await _loadFromFirebase();
+        _startRealtimeListeners();
       }
 
       if (!hasRemoteData) {
@@ -57,6 +68,83 @@ class DataService extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> refreshFromRemote() async {
+    if (!_firebaseSync.isEnabled) {
+      await initialize();
+      return;
+    }
+
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _loadFromFirebase();
+      await _saveUsers(syncRemote: false);
+      await _saveProjects(syncRemote: false);
+      await _saveTimesheetEntries(syncRemote: false);
+      _emitRealtimeTick();
+    } catch (e) {
+      debugPrint('Error refreshing Firebase data: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  void _startRealtimeListeners() {
+    if (!_firebaseSync.isEnabled) {
+      return;
+    }
+
+    _usersSubscription = _firebaseSync.watchUsers().listen(
+      (users) async {
+        _users = users;
+        _emitRealtimeTick();
+        await _saveUsers(syncRemote: false);
+      },
+      onError: (error) {
+        debugPrint('Realtime users error: $error');
+      },
+    );
+
+    _projectsSubscription = _firebaseSync.watchProjects().listen(
+      (projects) async {
+        _projects = projects;
+        _emitRealtimeTick();
+        await _saveProjects(syncRemote: false);
+      },
+      onError: (error) {
+        debugPrint('Realtime projects error: $error');
+      },
+    );
+
+    _timesheetSubscription = _firebaseSync.watchTimesheetEntries().listen(
+      (entries) async {
+        _timesheetEntries = entries;
+        _emitRealtimeTick();
+        await _saveTimesheetEntries(syncRemote: false);
+      },
+      onError: (error) {
+        debugPrint('Realtime timesheet error: $error');
+      },
+    );
+  }
+
+  void _cancelRealtimeListeners() {
+    _usersSubscription?.cancel();
+    _projectsSubscription?.cancel();
+    _timesheetSubscription?.cancel();
+    _usersSubscription = null;
+    _projectsSubscription = null;
+    _timesheetSubscription = null;
+  }
+
+  void _emitRealtimeTick() {
+    _realtimeTick++;
+    if (!_realtimeTickController.isClosed) {
+      _realtimeTickController.add(_realtimeTick);
     }
   }
 
@@ -547,37 +635,51 @@ class DataService extends ChangeNotifier {
   }
 
   List<User> getTeamLeadsForManager(String managerId) {
+    final manager = getUserById(managerId);
     return _users
         .where(
           (u) =>
               u.role == UserRole.teamLead &&
-              u.managerId == managerId &&
+              _matchesUserReference(
+                reference: u.managerId,
+                userId: managerId,
+                userEmail: manager?.email,
+              ) &&
               u.isActive,
         )
         .toList();
   }
 
   List<User> getDevelopersForTeamLead(String teamLeadId) {
+    final teamLead = getUserById(teamLeadId);
     return _users
         .where(
           (u) =>
               u.role == UserRole.employee &&
-              u.teamLeadId == teamLeadId &&
+              _matchesUserReference(
+                reference: u.teamLeadId,
+                userId: teamLeadId,
+                userEmail: teamLead?.email,
+              ) &&
               u.isActive,
         )
         .toList();
   }
 
   List<User> getDevelopersForManager(String managerId) {
-    final teamLeads = getTeamLeadsForManager(
-      managerId,
-    ).map((u) => u.id).toSet();
+    final teamLeads = getTeamLeadsForManager(managerId);
     return _users
         .where(
           (u) =>
               u.role == UserRole.employee &&
               u.teamLeadId != null &&
-              teamLeads.contains(u.teamLeadId) &&
+              teamLeads.any(
+                (tl) => _matchesUserReference(
+                  reference: u.teamLeadId,
+                  userId: tl.id,
+                  userEmail: tl.email,
+                ),
+              ) &&
               u.isActive,
         )
         .toList();
@@ -663,20 +765,56 @@ class DataService extends ChangeNotifier {
       case UserRole.admin:
         return true;
       case UserRole.manager:
-        final teamLeadIds = getTeamLeadsForManager(
-          viewer.id,
-        ).map((u) => u.id).toSet();
+        final teamLeads = getTeamLeadsForManager(viewer.id);
         return (target.role == UserRole.teamLead &&
-                target.managerId == viewer.id) ||
+                _matchesUserReference(
+                  reference: target.managerId,
+                  userId: viewer.id,
+                  userEmail: viewer.email,
+                )) ||
             (target.role == UserRole.employee &&
                 target.teamLeadId != null &&
-                teamLeadIds.contains(target.teamLeadId));
+                teamLeads.any(
+                  (tl) => _matchesUserReference(
+                    reference: target.teamLeadId,
+                    userId: tl.id,
+                    userEmail: tl.email,
+                  ),
+                ));
       case UserRole.teamLead:
         return target.role == UserRole.employee &&
-            target.teamLeadId == viewer.id;
+            _matchesUserReference(
+              reference: target.teamLeadId,
+              userId: viewer.id,
+              userEmail: viewer.email,
+            );
       case UserRole.employee:
         return false;
     }
+  }
+
+  bool _matchesUserReference({
+    required String? reference,
+    required String userId,
+    String? userEmail,
+  }) {
+    if (reference == null || reference.trim().isEmpty) {
+      return false;
+    }
+
+    final normalizedRef = reference.trim().toLowerCase();
+    if (normalizedRef == userId.trim().toLowerCase()) {
+      return true;
+    }
+
+    if (userEmail != null && userEmail.trim().isNotEmpty) {
+      final normalizedEmail = userEmail.trim().toLowerCase();
+      if (normalizedRef == normalizedEmail) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   bool isWorkingDay(DateTime date) {
@@ -790,5 +928,12 @@ class DataService extends ChangeNotifier {
       cursor = cursor.subtract(const Duration(days: 1));
     }
     return cursor;
+  }
+
+  @override
+  void dispose() {
+    _cancelRealtimeListeners();
+    _realtimeTickController.close();
+    super.dispose();
   }
 }

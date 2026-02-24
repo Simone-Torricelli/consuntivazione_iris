@@ -39,9 +39,7 @@ class FirebaseSyncService {
 
     try {
       final snapshot = await _usersRef(db)!.get();
-      return snapshot.docs
-          .map((doc) => User.fromJson(Map<String, dynamic>.from(doc.data())))
-          .toList();
+      return snapshot.docs.map(_parseUserDoc).whereType<User>().toList();
     } catch (e) {
       debugPrint('Errore fetchUsers Firebase: $e');
       return [];
@@ -59,7 +57,7 @@ class FirebaseSyncService {
       if (!doc.exists || doc.data() == null) {
         return null;
       }
-      return User.fromJson(Map<String, dynamic>.from(doc.data()!));
+      return _parseUserDoc(doc);
     } catch (e) {
       debugPrint('Errore fetchUserById Firebase: $e');
       return null;
@@ -79,9 +77,7 @@ class FirebaseSyncService {
         db,
       )!.where('email', isEqualTo: normalized).limit(1).get();
       if (normalizedSnapshot.docs.isNotEmpty) {
-        return User.fromJson(
-          Map<String, dynamic>.from(normalizedSnapshot.docs.first.data()),
-        );
+        return _parseUserDoc(normalizedSnapshot.docs.first);
       }
 
       final rawSnapshot = await _usersRef(
@@ -90,9 +86,7 @@ class FirebaseSyncService {
       if (rawSnapshot.docs.isEmpty) {
         return null;
       }
-      return User.fromJson(
-        Map<String, dynamic>.from(rawSnapshot.docs.first.data()),
-      );
+      return _parseUserDoc(rawSnapshot.docs.first);
     } catch (e) {
       debugPrint('Errore fetchUserByEmail Firebase: $e');
       return null;
@@ -107,9 +101,7 @@ class FirebaseSyncService {
 
     try {
       final snapshot = await _projectsRef(db)!.get();
-      return snapshot.docs
-          .map((doc) => Project.fromJson(Map<String, dynamic>.from(doc.data())))
-          .toList();
+      return snapshot.docs.map(_parseProjectDoc).whereType<Project>().toList();
     } catch (e) {
       debugPrint('Errore fetchProjects Firebase: $e');
       return [];
@@ -125,15 +117,59 @@ class FirebaseSyncService {
     try {
       final snapshot = await _entriesRef(db)!.get();
       return snapshot.docs
-          .map(
-            (doc) =>
-                TimesheetEntry.fromJson(Map<String, dynamic>.from(doc.data())),
-          )
+          .map(_parseTimesheetDoc)
+          .whereType<TimesheetEntry>()
           .toList();
     } catch (e) {
       debugPrint('Errore fetchTimesheetEntries Firebase: $e');
       return [];
     }
+  }
+
+  Stream<List<User>> watchUsers() {
+    final db = _safeFirestore();
+    if (db == null) {
+      return const Stream<List<User>>.empty();
+    }
+
+    return _usersRef(db)!.snapshots().map(
+      (snapshot) => snapshot.docs.map(_parseUserDoc).whereType<User>().toList(),
+    );
+  }
+
+  Stream<List<Project>> watchProjects() {
+    final db = _safeFirestore();
+    if (db == null) {
+      return const Stream<List<Project>>.empty();
+    }
+
+    return _projectsRef(db)!.snapshots().map(
+      (snapshot) =>
+          snapshot.docs.map(_parseProjectDoc).whereType<Project>().toList(),
+    );
+  }
+
+  Stream<User?> watchUserById(String userId) {
+    final db = _safeFirestore();
+    if (db == null) {
+      return const Stream<User?>.empty();
+    }
+
+    return _usersRef(db)!.doc(userId).snapshots().map(_parseUserDoc);
+  }
+
+  Stream<List<TimesheetEntry>> watchTimesheetEntries() {
+    final db = _safeFirestore();
+    if (db == null) {
+      return const Stream<List<TimesheetEntry>>.empty();
+    }
+
+    return _entriesRef(db)!.snapshots().map(
+      (snapshot) => snapshot.docs
+          .map(_parseTimesheetDoc)
+          .whereType<TimesheetEntry>()
+          .toList(),
+    );
   }
 
   Future<void> upsertUser(User user) async {
@@ -196,6 +232,135 @@ class FirebaseSyncService {
     await _entriesRef(db)!.doc(entryId).delete();
   }
 
+  Future<void> migrateUserReferences({
+    required String oldUserId,
+    required String newUserId,
+    String? oldEmail,
+    String? newEmail,
+  }) async {
+    final db = _safeFirestore();
+    if (db == null) {
+      return;
+    }
+
+    if (oldUserId == newUserId) {
+      return;
+    }
+
+    final oldValues = <String>{
+      oldUserId.trim(),
+      if (oldEmail != null && oldEmail.trim().isNotEmpty) oldEmail.trim(),
+    };
+    final normalizedOldValues = oldValues.map((v) => v.toLowerCase()).toSet();
+    final normalizedNewEmail = newEmail?.trim().toLowerCase();
+
+    Future<void> updateUsersField(String field) async {
+      for (final rawValue in oldValues) {
+        final value = rawValue.trim();
+        if (value.isEmpty) {
+          continue;
+        }
+        final snap = await _usersRef(db)!.where(field, isEqualTo: value).get();
+        for (final doc in snap.docs) {
+          await doc.reference.set({field: newUserId}, SetOptions(merge: true));
+        }
+      }
+    }
+
+    Future<void> updateProjectsOwner() async {
+      for (final rawValue in oldValues) {
+        final value = rawValue.trim();
+        if (value.isEmpty) {
+          continue;
+        }
+        final snap = await _projectsRef(
+          db,
+        )!.where('ownerUserId', isEqualTo: value).get();
+        for (final doc in snap.docs) {
+          await doc.reference.set({
+            'ownerUserId': newUserId,
+          }, SetOptions(merge: true));
+        }
+      }
+    }
+
+    Future<void> updateProjectsAssigned() async {
+      final processedIds = <String>{};
+      for (final rawValue in oldValues) {
+        final value = rawValue.trim();
+        if (value.isEmpty) {
+          continue;
+        }
+        final snap = await _projectsRef(
+          db,
+        )!.where('assignedUserIds', arrayContains: value).get();
+        for (final doc in snap.docs) {
+          if (!processedIds.add(doc.id)) {
+            continue;
+          }
+          final map = Map<String, dynamic>.from(doc.data());
+          final list = (map['assignedUserIds'] as List<dynamic>? ?? const [])
+              .map((e) => e.toString())
+              .toList();
+          final updated = <String>[];
+          var inserted = false;
+          for (final item in list) {
+            final normalized = item.trim().toLowerCase();
+            if (normalizedOldValues.contains(normalized)) {
+              if (!inserted) {
+                updated.add(newUserId);
+                inserted = true;
+              }
+            } else {
+              updated.add(item);
+            }
+          }
+          if (!inserted) {
+            updated.add(newUserId);
+          }
+          await doc.reference.set({
+            'assignedUserIds': updated.toSet().toList(),
+          }, SetOptions(merge: true));
+        }
+      }
+    }
+
+    Future<void> updateTimesheetsUser() async {
+      for (final rawValue in oldValues) {
+        final value = rawValue.trim();
+        if (value.isEmpty) {
+          continue;
+        }
+        final snap = await _entriesRef(
+          db,
+        )!.where('userId', isEqualTo: value).get();
+        for (final doc in snap.docs) {
+          await doc.reference.set({
+            'userId': newUserId,
+          }, SetOptions(merge: true));
+        }
+      }
+    }
+
+    await updateUsersField('teamLeadId');
+    await updateUsersField('managerId');
+    await updateProjectsOwner();
+    await updateProjectsAssigned();
+    await updateTimesheetsUser();
+
+    // Normalize email references on users if they still point to old email.
+    if (normalizedNewEmail != null && normalizedNewEmail.isNotEmpty) {
+      for (final field in const ['teamLeadId', 'managerId']) {
+        final snap = await _usersRef(
+          db,
+        )!.where(field, isEqualTo: normalizedNewEmail).get();
+        for (final doc in snap.docs) {
+          await doc.reference.set({field: newUserId}, SetOptions(merge: true));
+        }
+      }
+    }
+  }
+
   Future<void> syncUsers(List<User> users) async {
     final db = _safeFirestore();
     if (db == null) {
@@ -245,4 +410,206 @@ class FirebaseSyncService {
     }
     await batch.commit();
   }
+
+  User? _parseUserDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    if (data == null) {
+      return null;
+    }
+
+    try {
+      final map = Map<String, dynamic>.from(data);
+      map['id'] = (map['id'] ?? doc.id).toString();
+      map['email'] =
+          _pickFirstString(map, const [
+            'email',
+            'mail',
+            'userEmail',
+          ])?.trim().toLowerCase() ??
+          '';
+      map['name'] = (map['name'] ?? '').toString();
+      map['surname'] = (map['surname'] ?? '').toString();
+      map['role'] = _normalizeUserRole(
+        map['role'] ?? map['ruolo'] ?? map['userRole'],
+      );
+      map['developerType'] = _normalizeDeveloperType(map['developerType']);
+      map['managerId'] = _pickFirstString(map, const [
+        'managerId',
+        'managerID',
+        'manager_id',
+      ]);
+      map['teamLeadId'] = _pickFirstString(map, const [
+        'teamLeadId',
+        'teamLeadID',
+        'team_lead_id',
+        'teamLeaderId',
+        'teamleaderid',
+        'tlId',
+        'tl_id',
+      ]);
+      map['isActive'] = map['isActive'] is bool ? map['isActive'] : true;
+      map['createdAt'] = _toIsoString(map['createdAt']) ?? _nowIso();
+      return User.fromJson(map);
+    } catch (e) {
+      debugPrint('Skip user doc non valido (${doc.id}): $e');
+      return null;
+    }
+  }
+
+  Project? _parseProjectDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    if (data == null) {
+      return null;
+    }
+
+    try {
+      final map = Map<String, dynamic>.from(data);
+      map['id'] = (map['id'] ?? doc.id).toString();
+      map['name'] = (map['name'] ?? '').toString();
+      map['description'] = (map['description'] ?? '').toString();
+      map['color'] = (map['color'] ?? '#1D4ED8').toString();
+      map['ownerUserId'] = map['ownerUserId']?.toString();
+      map['isActive'] = map['isActive'] is bool ? map['isActive'] : true;
+      map['createdAt'] = _toIsoString(map['createdAt']) ?? _nowIso();
+      final assigned = map['assignedUserIds'];
+      if (assigned is List) {
+        map['assignedUserIds'] = assigned.map((e) => e.toString()).toList();
+      } else {
+        map['assignedUserIds'] = <String>[];
+      }
+      return Project.fromJson(map);
+    } catch (e) {
+      debugPrint('Skip project doc non valido (${doc.id}): $e');
+      return null;
+    }
+  }
+
+  TimesheetEntry? _parseTimesheetDoc(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    if (data == null) {
+      return null;
+    }
+
+    try {
+      final map = Map<String, dynamic>.from(data);
+      map['id'] = (map['id'] ?? doc.id).toString();
+      map['userId'] = (map['userId'] ?? map['uid'] ?? '').toString();
+      map['projectId'] = (map['projectId'] ?? '').toString();
+      map['date'] = _toIsoString(map['date']) ?? _nowIso();
+      final rawHours = map['hours'];
+      map['hours'] = rawHours is num
+          ? rawHours.toDouble()
+          : double.tryParse(rawHours?.toString() ?? '') ?? 0.0;
+      map['notes'] = map['notes']?.toString();
+      map['createdAt'] = _toIsoString(map['createdAt']) ?? _nowIso();
+      map['updatedAt'] = _toIsoString(map['updatedAt']);
+
+      if ((map['userId'] as String).isEmpty ||
+          (map['projectId'] as String).isEmpty) {
+        return null;
+      }
+
+      return TimesheetEntry.fromJson(map);
+    } catch (e) {
+      debugPrint('Skip timesheet doc non valido (${doc.id}): $e');
+      return null;
+    }
+  }
+
+  String _normalizeUserRole(dynamic raw) {
+    final value = (raw ?? '').toString().trim().toLowerCase();
+    if (value == 'admin') return 'admin';
+    if (value == 'manager') return 'manager';
+    if (value == 'teamlead' ||
+        value == 'team_lead' ||
+        value == 'team-lead' ||
+        value == 'tl') {
+      return 'teamLead';
+    }
+    if (value == 'employee' ||
+        value == 'developer' ||
+        value == 'dev' ||
+        value == 'viewer' ||
+        value == 'visualizzatore') {
+      return 'employee';
+    }
+    return 'employee';
+  }
+
+  String? _pickFirstString(Map<String, dynamic> map, List<String> keys) {
+    for (final key in keys) {
+      final value = map[key];
+      if (value == null) {
+        continue;
+      }
+      if (value is Map) {
+        final nested = Map<String, dynamic>.from(value);
+        final nestedId =
+            nested['id'] ??
+            nested['uid'] ??
+            nested['userId'] ??
+            nested['email'];
+        if (nestedId != null) {
+          final nestedText = nestedId.toString().trim();
+          if (nestedText.isNotEmpty) {
+            return nestedText;
+          }
+        }
+      }
+      final asString = value.toString().trim();
+      if (asString.isNotEmpty) {
+        return asString;
+      }
+    }
+    return null;
+  }
+
+  String? _normalizeDeveloperType(dynamic raw) {
+    if (raw == null) {
+      return null;
+    }
+
+    final value = raw.toString().trim().toLowerCase();
+    switch (value) {
+      case 'android':
+        return 'android';
+      case 'ios':
+        return 'ios';
+      case 'fullstack':
+      case 'full_stack':
+      case 'full-stack':
+        return 'fullStack';
+      case 'backend':
+        return 'backend';
+      case 'frontend':
+      case 'front_end':
+      case 'front-end':
+        return 'frontend';
+      case 'designer':
+        return 'designer';
+      case 'qa':
+        return 'qa';
+      default:
+        return null;
+    }
+  }
+
+  String? _toIsoString(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is Timestamp) {
+      return value.toDate().toIso8601String();
+    }
+    if (value is DateTime) {
+      return value.toIso8601String();
+    }
+    final asString = value.toString();
+    final parsed = DateTime.tryParse(asString);
+    return parsed?.toIso8601String();
+  }
+
+  String _nowIso() => DateTime.now().toIso8601String();
 }

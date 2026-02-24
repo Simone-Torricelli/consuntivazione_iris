@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
@@ -11,6 +12,7 @@ class AuthService extends ChangeNotifier {
   User? _currentUser;
   bool _isLoading = false;
   String? _lastError;
+  StreamSubscription<User?>? _profileSubscription;
 
   final FirebaseSyncService _firebaseSync = FirebaseSyncService();
 
@@ -41,6 +43,7 @@ class AuthService extends ChangeNotifier {
         if (firebaseUser != null) {
           final profile = await _resolveOrCreateFirebaseProfile(firebaseUser);
           _currentUser = profile;
+          _startCurrentUserProfileSync(firebaseUser.uid);
 
           if (profile != null) {
             await prefs.setString(
@@ -51,10 +54,12 @@ class AuthService extends ChangeNotifier {
             await prefs.remove(_currentUserKey);
           }
         } else {
+          _cancelCurrentUserProfileSync();
           _currentUser = null;
           await prefs.remove(_currentUserKey);
         }
       } else {
+        _cancelCurrentUserProfileSync();
         final userJson = prefs.getString(_currentUserKey);
         if (userJson != null) {
           _currentUser = User.fromJson(json.decode(userJson));
@@ -99,6 +104,7 @@ class AuthService extends ChangeNotifier {
         }
 
         _currentUser = profile;
+        _startCurrentUserProfileSync(firebaseUser.uid);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_currentUserKey, json.encode(profile.toJson()));
         await _hydrateUsersFromFirebase(prefs);
@@ -234,6 +240,7 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _cancelCurrentUserProfileSync();
     _currentUser = null;
 
     try {
@@ -246,6 +253,27 @@ class AuthService extends ChangeNotifier {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_currentUserKey);
+    notifyListeners();
+  }
+
+  Future<void> refreshCurrentUserFromRemote() async {
+    if (!_firebaseSync.isEnabled) {
+      return;
+    }
+
+    final firebaseUser = fb_auth.FirebaseAuth.instance.currentUser;
+    if (firebaseUser == null) {
+      return;
+    }
+
+    final profile = await _resolveOrCreateFirebaseProfile(firebaseUser);
+    if (profile == null) {
+      return;
+    }
+
+    _currentUser = profile;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_currentUserKey, json.encode(profile.toJson()));
     notifyListeners();
   }
 
@@ -264,9 +292,9 @@ class AuthService extends ChangeNotifier {
 
     if (profile == null) {
       final byEmail = await _firebaseSync.fetchUserByEmail(normalizedEmail);
-      if (byEmail != null &&
-          byEmail.id != firebaseUser.uid &&
-          byEmail.role == UserRole.employee) {
+      if (byEmail != null && byEmail.id != firebaseUser.uid) {
+        final oldId = byEmail.id;
+        final oldEmail = byEmail.email;
         profile = byEmail.copyWith(
           id: firebaseUser.uid,
           email: normalizedEmail,
@@ -279,7 +307,13 @@ class AuthService extends ChangeNotifier {
           developerType: suggestedDeveloperType ?? byEmail.developerType,
         );
         await _firebaseSync.upsertUser(profile);
-        await _firebaseSync.deleteUser(byEmail.id);
+        await _firebaseSync.migrateUserReferences(
+          oldUserId: oldId,
+          newUserId: firebaseUser.uid,
+          oldEmail: oldEmail,
+          newEmail: normalizedEmail,
+        );
+        await _firebaseSync.deleteUser(oldId);
       }
     }
 
@@ -309,6 +343,31 @@ class AuthService extends ChangeNotifier {
     }
 
     return profile;
+  }
+
+  void _startCurrentUserProfileSync(String uid) {
+    _cancelCurrentUserProfileSync();
+    _profileSubscription = _firebaseSync
+        .watchUserById(uid)
+        .listen(
+          (user) async {
+            if (user == null) {
+              return;
+            }
+            _currentUser = user;
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_currentUserKey, json.encode(user.toJson()));
+            notifyListeners();
+          },
+          onError: (error) {
+            debugPrint('Current user realtime sync error: $error');
+          },
+        );
+  }
+
+  void _cancelCurrentUserProfileSync() {
+    _profileSubscription?.cancel();
+    _profileSubscription = null;
   }
 
   Future<void> _hydrateUsersFromFirebase(SharedPreferences prefs) async {
@@ -400,5 +459,11 @@ class AuthService extends ChangeNotifier {
       return null;
     }
     return parts.sublist(1).join(' ');
+  }
+
+  @override
+  void dispose() {
+    _cancelCurrentUserProfileSync();
+    super.dispose();
   }
 }

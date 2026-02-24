@@ -27,24 +27,33 @@ class TeamOverviewScreen extends StatelessWidget {
         decoration: const BoxDecoration(
           gradient: AppTheme.appBackgroundGradient,
         ),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
-          children: [
-            AnimatedReveal(
-              delay: const Duration(milliseconds: 60),
-              child: _TeamHeaderCard(
-                user: currentUser,
-                dataService: dataService,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            final auth = context.read<AuthService>();
+            final data = context.read<DataService>();
+            await auth.refreshCurrentUserFromRemote();
+            await data.refreshFromRemote();
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+            children: [
+              AnimatedReveal(
+                delay: const Duration(milliseconds: 60),
+                child: _TeamHeaderCard(
+                  user: currentUser,
+                  dataService: dataService,
+                ),
               ),
-            ),
-            const SizedBox(height: 14),
-            if (currentUser.role == UserRole.manager)
-              _ManagerTeamSection(currentUser: currentUser)
-            else if (currentUser.role == UserRole.teamLead)
-              _TeamLeadSection(currentUser: currentUser)
-            else
-              const _NoTeamSection(),
-          ],
+              const SizedBox(height: 14),
+              if (currentUser.role == UserRole.manager)
+                _ManagerTeamSection(currentUser: currentUser)
+              else if (currentUser.role == UserRole.teamLead)
+                _TeamLeadSection(currentUser: currentUser)
+              else
+                const _NoTeamSection(),
+            ],
+          ),
         ),
       ),
     );

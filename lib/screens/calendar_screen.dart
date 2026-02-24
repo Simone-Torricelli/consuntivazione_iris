@@ -62,316 +62,329 @@ class _CalendarScreenState extends State<CalendarScreen> {
         decoration: const BoxDecoration(
           gradient: AppTheme.appBackgroundGradient,
         ),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 24 + bottomInset),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AnimatedReveal(
-                delay: const Duration(milliseconds: 70),
-                child: _MonthOverviewCard(
-                  focusedDay: _focusedDay,
-                  totalMonthHours: totalMonthHours,
-                  workingDaysWithEntries: workingDaysWithEntries,
-                  perfectDays: perfectDays,
-                  workingDaysInMonth: workingDaysInMonth,
-                  salaryDay: salaryDay,
-                ),
-              ),
-              const SizedBox(height: 14),
-              AnimatedReveal(
-                delay: const Duration(milliseconds: 120),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: const Color(0xFFDCE8F9)),
-                  ),
-                  padding: const EdgeInsets.all(8),
-                  child: TableCalendar(
-                    firstDay: DateTime.utc(2020, 1, 1),
-                    lastDay: DateTime.utc(2035, 12, 31),
-                    focusedDay: _focusedDay,
-                    locale: 'it',
-                    selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                    startingDayOfWeek: StartingDayOfWeek.monday,
-                    calendarFormat: CalendarFormat.month,
-                    availableCalendarFormats: const {
-                      CalendarFormat.month: 'Mese',
-                    },
-                    eventLoader: (day) =>
-                        dataService.getEntriesForDate(userId, day),
-                    onDaySelected: (selectedDay, focusedDay) {
-                      setState(() {
-                        _selectedDay = DateUtils.dateOnly(selectedDay);
-                        _focusedDay = DateUtils.dateOnly(focusedDay);
-                      });
-                    },
-                    onPageChanged: (focusedDay) {
-                      setState(() {
-                        _focusedDay = DateUtils.dateOnly(focusedDay);
-                      });
-                    },
-                    headerStyle: const HeaderStyle(
-                      titleCentered: true,
-                      formatButtonVisible: false,
-                      titleTextStyle: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.textPrimaryColor,
-                      ),
-                    ),
-                    calendarStyle: CalendarStyle(
-                      outsideTextStyle: TextStyle(
-                        color: AppTheme.textLightColor.withValues(alpha: 0.6),
-                      ),
-                      weekendTextStyle: const TextStyle(
-                        color: AppTheme.textLightColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      todayDecoration: BoxDecoration(
-                        color: AppTheme.primaryColor.withValues(alpha: 0.16),
-                        shape: BoxShape.circle,
-                      ),
-                      selectedDecoration: const BoxDecoration(
-                        color: AppTheme.primaryColor,
-                        shape: BoxShape.circle,
-                      ),
-                      markerDecoration: const BoxDecoration(
-                        color: AppTheme.secondaryColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    calendarBuilders: CalendarBuilders(
-                      prioritizedBuilder: (context, day, focusedDay) {
-                        if (!isSameDay(day, salaryDay)) {
-                          return null;
-                        }
-
-                        final isSelected = isSameDay(day, _selectedDay);
-                        return Container(
-                          margin: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            gradient: isSelected
-                                ? null
-                                : AppTheme.sunriseGradient,
-                            color: isSelected ? AppTheme.primaryColor : null,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Stack(
-                            children: [
-                              Center(
-                                child: Text(
-                                  '${day.day}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                              const Positioned(
-                                right: 3,
-                                top: 3,
-                                child: Icon(
-                                  Icons.payments_outlined,
-                                  color: Colors.white,
-                                  size: 11,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      markerBuilder: (context, date, events) {
-                        if (events.isEmpty) {
-                          return const SizedBox.shrink();
-                        }
-
-                        final dayHours = dataService.getDailyHours(
-                          userId,
-                          date,
-                        );
-                        final markerColor = dayHours >= 8.0
-                            ? AppTheme.successColor
-                            : (dayHours >= 4.0
-                                  ? AppTheme.warningColor
-                                  : AppTheme.secondaryColor);
-
-                        return Positioned(
-                          bottom: 2,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: markerColor,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${dayHours.toStringAsFixed(1)}h',
-                              style: const TextStyle(
-                                fontSize: 8,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              const AnimatedReveal(
-                delay: Duration(milliseconds: 160),
-                child: _LegendRow(),
-              ),
-              const SizedBox(height: 18),
-              if (projectHours.isNotEmpty) ...[
-                const Text(
-                  'Distribuzione per progetto',
-                  style: AppTheme.heading3,
-                ),
-                const SizedBox(height: 10),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            final auth = context.read<AuthService>();
+            final data = context.read<DataService>();
+            await auth.refreshCurrentUserFromRemote();
+            await data.refreshFromRemote();
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 24 + bottomInset),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 AnimatedReveal(
-                  delay: const Duration(milliseconds: 220),
+                  delay: const Duration(milliseconds: 70),
+                  child: _MonthOverviewCard(
+                    focusedDay: _focusedDay,
+                    totalMonthHours: totalMonthHours,
+                    workingDaysWithEntries: workingDaysWithEntries,
+                    perfectDays: perfectDays,
+                    workingDaysInMonth: workingDaysInMonth,
+                    salaryDay: salaryDay,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                AnimatedReveal(
+                  delay: const Duration(milliseconds: 120),
                   child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(24),
                       border: Border.all(color: const Color(0xFFDCE8F9)),
                     ),
-                    child: Column(
-                      children: projectHours.entries.map((entry) {
-                        final project = dataService.getProjectById(entry.key);
-                        final projectColor = _projectColor(project?.color);
-                        final percentage = totalMonthHours == 0
-                            ? 0.0
-                            : (entry.value / totalMonthHours).clamp(0.0, 1.0);
+                    padding: const EdgeInsets.all(8),
+                    child: TableCalendar(
+                      firstDay: DateTime.utc(2020, 1, 1),
+                      lastDay: DateTime.utc(2035, 12, 31),
+                      focusedDay: _focusedDay,
+                      locale: 'it',
+                      selectedDayPredicate: (day) =>
+                          isSameDay(_selectedDay, day),
+                      startingDayOfWeek: StartingDayOfWeek.monday,
+                      calendarFormat: CalendarFormat.month,
+                      availableCalendarFormats: const {
+                        CalendarFormat.month: 'Mese',
+                      },
+                      eventLoader: (day) =>
+                          dataService.getEntriesForDate(userId, day),
+                      onDaySelected: (selectedDay, focusedDay) {
+                        setState(() {
+                          _selectedDay = DateUtils.dateOnly(selectedDay);
+                          _focusedDay = DateUtils.dateOnly(focusedDay);
+                        });
+                      },
+                      onPageChanged: (focusedDay) {
+                        setState(() {
+                          _focusedDay = DateUtils.dateOnly(focusedDay);
+                        });
+                      },
+                      headerStyle: const HeaderStyle(
+                        titleCentered: true,
+                        formatButtonVisible: false,
+                        titleTextStyle: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.textPrimaryColor,
+                        ),
+                      ),
+                      calendarStyle: CalendarStyle(
+                        outsideTextStyle: TextStyle(
+                          color: AppTheme.textLightColor.withValues(alpha: 0.6),
+                        ),
+                        weekendTextStyle: const TextStyle(
+                          color: AppTheme.textLightColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        todayDecoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withValues(alpha: 0.16),
+                          shape: BoxShape.circle,
+                        ),
+                        selectedDecoration: const BoxDecoration(
+                          color: AppTheme.primaryColor,
+                          shape: BoxShape.circle,
+                        ),
+                        markerDecoration: const BoxDecoration(
+                          color: AppTheme.secondaryColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      calendarBuilders: CalendarBuilders(
+                        prioritizedBuilder: (context, day, focusedDay) {
+                          if (!isSameDay(day, salaryDay)) {
+                            return null;
+                          }
 
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          width: 10,
-                                          height: 10,
-                                          decoration: BoxDecoration(
-                                            color: projectColor,
-                                            borderRadius: BorderRadius.circular(
-                                              3,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            project?.name ?? 'Progetto',
-                                            style: AppTheme.bodyMedium.copyWith(
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                          final isSelected = isSameDay(day, _selectedDay);
+                          return Container(
+                            margin: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              gradient: isSelected
+                                  ? null
+                                  : AppTheme.sunriseGradient,
+                              color: isSelected ? AppTheme.primaryColor : null,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Stack(
+                              children: [
+                                Center(
+                                  child: Text(
+                                    '${day.day}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
                                     ),
                                   ),
-                                  Text(
-                                    '${entry.value.toStringAsFixed(1)}h',
-                                    style: AppTheme.bodyMedium,
+                                ),
+                                const Positioned(
+                                  right: 3,
+                                  top: 3,
+                                  child: Icon(
+                                    Icons.payments_outlined,
+                                    color: Colors.white,
+                                    size: 11,
                                   ),
-                                ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        markerBuilder: (context, date, events) {
+                          if (events.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+
+                          final dayHours = dataService.getDailyHours(
+                            userId,
+                            date,
+                          );
+                          final markerColor = dayHours >= 8.0
+                              ? AppTheme.successColor
+                              : (dayHours >= 4.0
+                                    ? AppTheme.warningColor
+                                    : AppTheme.secondaryColor);
+
+                          return Positioned(
+                            bottom: 2,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1,
                               ),
-                              const SizedBox(height: 6),
-                              ClipRRect(
+                              decoration: BoxDecoration(
+                                color: markerColor,
                                 borderRadius: BorderRadius.circular(8),
-                                child: LinearProgressIndicator(
-                                  minHeight: 8,
-                                  value: percentage,
-                                  backgroundColor: AppTheme.surfaceMutedColor,
-                                  color: projectColor,
+                              ),
+                              child: Text(
+                                '${dayHours.toStringAsFixed(1)}h',
+                                style: const TextStyle(
+                                  fontSize: 8,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
+                            ),
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
-              ],
-              if (_selectedDay != null) ...[
-                const SizedBox(height: 18),
-                Text(
-                  'Dettaglio ${DateFormat('d MMMM', 'it').format(_selectedDay!)}',
-                  style: AppTheme.heading3,
-                ),
                 const SizedBox(height: 10),
-                ...dataService.getEntriesForDate(userId, _selectedDay!).map((
-                  entry,
-                ) {
-                  final project = dataService.getProjectById(entry.projectId);
-                  final projectColor = _projectColor(project?.color);
-
-                  return AnimatedReveal(
-                    delay: const Duration(milliseconds: 260),
+                const AnimatedReveal(
+                  delay: Duration(milliseconds: 160),
+                  child: _LegendRow(),
+                ),
+                const SizedBox(height: 18),
+                if (projectHours.isNotEmpty) ...[
+                  const Text(
+                    'Distribuzione per progetto',
+                    style: AppTheme.heading3,
+                  ),
+                  const SizedBox(height: 10),
+                  AnimatedReveal(
+                    delay: const Duration(milliseconds: 220),
                     child: Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.all(12),
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: const Color(0xFFDCE8F9)),
                       ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: projectColor.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(Icons.folder, color: projectColor),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
+                      child: Column(
+                        children: projectHours.entries.map((entry) {
+                          final project = dataService.getProjectById(entry.key);
+                          final projectColor = _projectColor(project?.color);
+                          final percentage = totalMonthHours == 0
+                              ? 0.0
+                              : (entry.value / totalMonthHours).clamp(0.0, 1.0);
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  project?.name ?? 'Progetto',
-                                  style: AppTheme.bodyLarge,
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: BoxDecoration(
+                                              color: projectColor,
+                                              borderRadius:
+                                                  BorderRadius.circular(3),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              project?.name ?? 'Progetto',
+                                              style: AppTheme.bodyMedium
+                                                  .copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Text(
+                                      '${entry.value.toStringAsFixed(1)}h',
+                                      style: AppTheme.bodyMedium,
+                                    ),
+                                  ],
                                 ),
-                                if ((entry.notes ?? '').trim().isNotEmpty)
-                                  Text(entry.notes!, style: AppTheme.bodySmall),
+                                const SizedBox(height: 6),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: LinearProgressIndicator(
+                                    minHeight: 8,
+                                    value: percentage,
+                                    backgroundColor: AppTheme.surfaceMutedColor,
+                                    color: projectColor,
+                                  ),
+                                ),
                               ],
                             ),
-                          ),
-                          Text(
-                            '${entry.hours.toStringAsFixed(1)}h',
-                            style: AppTheme.heading3.copyWith(
-                              color: projectColor,
-                            ),
-                          ),
-                        ],
+                          );
+                        }).toList(),
                       ),
                     ),
-                  );
-                }),
+                  ),
+                ],
+                if (_selectedDay != null) ...[
+                  const SizedBox(height: 18),
+                  Text(
+                    'Dettaglio ${DateFormat('d MMMM', 'it').format(_selectedDay!)}',
+                    style: AppTheme.heading3,
+                  ),
+                  const SizedBox(height: 10),
+                  ...dataService.getEntriesForDate(userId, _selectedDay!).map((
+                    entry,
+                  ) {
+                    final project = dataService.getProjectById(entry.projectId);
+                    final projectColor = _projectColor(project?.color);
+
+                    return AnimatedReveal(
+                      delay: const Duration(milliseconds: 260),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFDCE8F9)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: projectColor.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(Icons.folder, color: projectColor),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    project?.name ?? 'Progetto',
+                                    style: AppTheme.bodyLarge,
+                                  ),
+                                  if ((entry.notes ?? '').trim().isNotEmpty)
+                                    Text(
+                                      entry.notes!,
+                                      style: AppTheme.bodySmall,
+                                    ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              '${entry.hours.toStringAsFixed(1)}h',
+                              style: AppTheme.heading3.copyWith(
+                                color: projectColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

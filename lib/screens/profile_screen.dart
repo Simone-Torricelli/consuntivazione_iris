@@ -85,120 +85,129 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: DecoratedBox(
         decoration: const BoxDecoration(color: Color(0xFFF2F3F5)),
         child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
-            children: [
-              AnimatedReveal(
-                delay: const Duration(milliseconds: 40),
-                beginOffset: const Offset(0, -0.04),
-                child: Row(
-                  children: [
-                    const Spacer(),
-                    _CircleActionButton(
-                      icon: Icons.settings_outlined,
-                      onTap: () => _openSettingsSheet(authService),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 22),
-              AnimatedReveal(
-                delay: const Duration(milliseconds: 80),
-                child: Text(
-                  'IL MIO PROFILO',
-                  style: GoogleFonts.archivoBlack(
-                    fontSize: 48,
-                    height: 0.95,
-                    color: Colors.black,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              AnimatedReveal(
-                delay: const Duration(milliseconds: 100),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFD4DBE6)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          child: RefreshIndicator(
+            onRefresh: () async {
+              final auth = context.read<AuthService>();
+              final data = context.read<DataService>();
+              await auth.refreshCurrentUserFromRemote();
+              await data.refreshFromRemote();
+            },
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
+              children: [
+                AnimatedReveal(
+                  delay: const Duration(milliseconds: 40),
+                  beginOffset: const Offset(0, -0.04),
+                  child: Row(
                     children: [
-                      Text(
-                        user.fullName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 18,
-                          color: Colors.black,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        user.email,
-                        style: const TextStyle(
-                          color: Color(0xFF5E6778),
-                          fontSize: 14,
-                        ),
+                      const Spacer(),
+                      _CircleActionButton(
+                        icon: Icons.settings_outlined,
+                        onTap: () => _openSettingsSheet(authService),
                       ),
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 18),
-              AnimatedReveal(
-                delay: const Duration(milliseconds: 120),
-                child: _ProfileTabs(
-                  index: _tabIndex,
-                  onChanged: (index) {
-                    setState(() {
-                      _tabIndex = index;
-                    });
-                  },
+                const SizedBox(height: 22),
+                AnimatedReveal(
+                  delay: const Duration(milliseconds: 80),
+                  child: Text(
+                    'IL MIO PROFILO',
+                    style: GoogleFonts.archivoBlack(
+                      fontSize: 48,
+                      height: 0.95,
+                      color: Colors.black,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 260),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                child: _tabIndex == 0
-                    ? _ProfileHighlightsView(
-                        key: const ValueKey('highlights'),
-                        user: user,
-                        totalHours: totalHours,
-                        monthHours: monthHours,
-                        totalEntries: allEntries.length,
-                        avgHoursPerDay: avgHoursPerDay,
-                        monthlyXp: monthlyXp,
-                        streak: streak,
-                        level: level,
-                        levelProgress: levelProgress,
-                        totalXp: totalXp,
-                        monthCompletion: monthCompletion,
-                        onLevelInfoTap: () => _openInfoSheet(
-                          title: 'Livello',
-                          message:
-                              'Il livello cresce con XP totali: ore registrate, streak e giorni perfetti.',
+                const SizedBox(height: 10),
+                AnimatedReveal(
+                  delay: const Duration(milliseconds: 100),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFD4DBE6)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user.fullName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                            color: Colors.black,
+                          ),
                         ),
-                        onActivityInfoTap: () => _openInfoSheet(
-                          title: 'Livello di attivita',
-                          message:
-                              'La classifica dipende da completamento target mensile, streak e ore del mese.',
+                        const SizedBox(height: 3),
+                        Text(
+                          user.email,
+                          style: const TextStyle(
+                            color: Color(0xFF5E6778),
+                            fontSize: 14,
+                          ),
                         ),
-                      )
-                    : _ProfileTimelineView(
-                        key: const ValueKey('timeline'),
-                        entries: allEntries,
-                        getProjectName: (projectId) =>
-                            dataService.getProjectById(projectId)?.name ??
-                            'Progetto',
-                      ),
-              ),
-            ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                AnimatedReveal(
+                  delay: const Duration(milliseconds: 120),
+                  child: _ProfileTabs(
+                    index: _tabIndex,
+                    onChanged: (index) {
+                      setState(() {
+                        _tabIndex = index;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(height: 14),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  child: _tabIndex == 0
+                      ? _ProfileHighlightsView(
+                          key: const ValueKey('highlights'),
+                          user: user,
+                          totalHours: totalHours,
+                          monthHours: monthHours,
+                          totalEntries: allEntries.length,
+                          avgHoursPerDay: avgHoursPerDay,
+                          monthlyXp: monthlyXp,
+                          streak: streak,
+                          level: level,
+                          levelProgress: levelProgress,
+                          totalXp: totalXp,
+                          monthCompletion: monthCompletion,
+                          onLevelInfoTap: () => _openInfoSheet(
+                            title: 'Livello',
+                            message:
+                                'Il livello cresce con XP totali: ore registrate, streak e giorni perfetti.',
+                          ),
+                          onActivityInfoTap: () => _openInfoSheet(
+                            title: 'Livello di attivita',
+                            message:
+                                'La classifica dipende da completamento target mensile, streak e ore del mese.',
+                          ),
+                        )
+                      : _ProfileTimelineView(
+                          key: const ValueKey('timeline'),
+                          entries: allEntries,
+                          getProjectName: (projectId) =>
+                              dataService.getProjectById(projectId)?.name ??
+                              'Progetto',
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

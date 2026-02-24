@@ -85,24 +85,38 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 420),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) {
-              final slide = Tween<Offset>(
-                begin: const Offset(0.06, 0),
-                end: Offset.zero,
-              ).animate(animation);
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(position: slide, child: child),
+          StreamBuilder<int>(
+            stream: dataService.realtimeTickStream,
+            initialData: dataService.realtimeTick,
+            builder: (context, snapshot) {
+              return RefreshIndicator(
+                onRefresh: () async {
+                  final auth = context.read<AuthService>();
+                  final data = context.read<DataService>();
+                  await auth.refreshCurrentUserFromRemote();
+                  await data.refreshFromRemote();
+                },
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 420),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    final slide = Tween<Offset>(
+                      begin: const Offset(0.06, 0),
+                      end: Offset.zero,
+                    ).animate(animation);
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(position: slide, child: child),
+                    );
+                  },
+                  child: KeyedSubtree(
+                    key: ValueKey<int>(effectiveIndex),
+                    child: screens[effectiveIndex],
+                  ),
+                ),
               );
             },
-            child: KeyedSubtree(
-              key: ValueKey<int>(effectiveIndex),
-              child: screens[effectiveIndex],
-            ),
           ),
           if (isSalaryDay)
             Align(

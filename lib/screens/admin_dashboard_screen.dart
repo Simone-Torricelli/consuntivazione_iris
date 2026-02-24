@@ -100,351 +100,363 @@ class AdminDashboardScreen extends StatelessWidget {
         decoration: const BoxDecoration(
           gradient: AppTheme.appBackgroundGradient,
         ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AnimatedReveal(
-                delay: const Duration(milliseconds: 60),
-                child: _HeroOverview(
-                  now: now,
-                  elapsedWorkingDays: elapsedWorkingDays,
-                  targetHoursPerUser: targetHoursPerUser,
-                  alertCount: alertCount,
-                ),
-              ),
-              const SizedBox(height: 16),
-              AnimatedReveal(
-                delay: const Duration(milliseconds: 120),
-                child: GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 1.32,
-                  children: [
-                    StatCard(
-                      title: 'Membri Team',
-                      value: teamMembers.length.toString(),
-                      icon: Icons.people_alt_outlined,
-                      color: AppTheme.primaryColor,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => authService.isAdmin
-                                ? const ManageUsersScreen()
-                                : const TeamOverviewScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    StatCard(
-                      title: 'Ore Team Mese',
-                      value: teamHours.toStringAsFixed(1),
-                      icon: Icons.timer_outlined,
-                      color: AppTheme.secondaryColor,
-                    ),
-                    StatCard(
-                      title: 'Completion Medio',
-                      value: '${(avgCompletion * 100).round()}%',
-                      icon: Icons.speed,
-                      color: AppTheme.successColor,
-                    ),
-                    StatCard(
-                      title: 'Progetti Attivi',
-                      value: projects.length.toString(),
-                      icon: Icons.folder_open,
-                      color: AppTheme.accentColor,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ManageProjectsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              if (topContributor != null) ...[
-                const SizedBox(height: 20),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            final auth = context.read<AuthService>();
+            final data = context.read<DataService>();
+            await auth.refreshCurrentUserFromRemote();
+            await data.refreshFromRemote();
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 AnimatedReveal(
-                  delay: const Duration(milliseconds: 170),
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => PersonDetailScreen(
-                            userId: topContributor.user.id,
-                          ),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        gradient: AppTheme.emeraldGradient,
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.emoji_events_outlined,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Top Contributor',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Text(
-                                  topContributor.user.fullName,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Text(
-                            '${topContributor.totalHours.toStringAsFixed(1)}h',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.chevron_right, color: Colors.white),
-                        ],
-                      ),
-                    ),
+                  delay: const Duration(milliseconds: 60),
+                  child: _HeroOverview(
+                    now: now,
+                    elapsedWorkingDays: elapsedWorkingDays,
+                    targetHoursPerUser: targetHoursPerUser,
+                    alertCount: alertCount,
                   ),
                 ),
-              ],
-              const SizedBox(height: 20),
-              const Text(
-                'Andamento per sviluppatore',
-                style: AppTheme.heading3,
-              ),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFDCE8F9)),
-                ),
-                child: userStats.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Text(
-                          'Nessun membro team disponibile.',
-                          style: AppTheme.bodyMedium,
-                        ),
-                      )
-                    : Column(
-                        children: userStats.asMap().entries.map((indexed) {
-                          final idx = indexed.key;
-                          final stat = indexed.value;
-                          final isAlert =
-                              stat.totalHours < (targetHoursPerUser * 0.75);
-
-                          return AnimatedReveal(
-                            delay: Duration(milliseconds: 220 + (idx * 35)),
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => PersonDetailScreen(
-                                      userId: stat.user.id,
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 14),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            stat.user.fullName,
-                                            style: AppTheme.bodyLarge,
-                                          ),
-                                        ),
-                                        Text(
-                                          '${stat.totalHours.toStringAsFixed(1)}h',
-                                          style: AppTheme.bodyMedium.copyWith(
-                                            color: isAlert
-                                                ? AppTheme.errorColor
-                                                : AppTheme.textPrimaryColor,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'Perfetti: ${stat.perfectDays}',
-                                          style: AppTheme.caption,
-                                        ),
-                                        const SizedBox(width: 2),
-                                        const Icon(
-                                          Icons.chevron_right,
-                                          size: 16,
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: LinearProgressIndicator(
-                                        value: stat.completionRate.clamp(
-                                          0.0,
-                                          1.0,
-                                        ),
-                                        minHeight: 8,
-                                        backgroundColor:
-                                            AppTheme.surfaceMutedColor,
-                                        color: isAlert
-                                            ? AppTheme.errorColor
-                                            : AppTheme.primaryColor,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-              ),
-              const SizedBox(height: 20),
-              const Text('Azioni rapide', style: AppTheme.heading3),
-              const SizedBox(height: 10),
-              if (authService.isAdmin) ...[
-                _QuickActionCard(
-                  title: 'Console utenti',
-                  subtitle: 'Assegna ruoli, TL e membri team',
-                  icon: Icons.admin_panel_settings_outlined,
-                  color: AppTheme.primaryColor,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ManageUsersScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 10),
-              ],
-              _QuickActionCard(
-                title: 'Gestisci Progetti',
-                subtitle: 'Aggiorna backlog progetti e assegnazioni',
-                icon: Icons.folder_copy_outlined,
-                color: AppTheme.secondaryColor,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ManageProjectsScreen(),
-                    ),
-                  );
-                },
-              ),
-              if (currentUser.role == UserRole.manager ||
-                  currentUser.role == UserRole.teamLead) ...[
-                const SizedBox(height: 10),
-                _QuickActionCard(
-                  title: 'Il mio team',
-                  subtitle: 'Vedi struttura e persone assegnate',
-                  icon: Icons.groups_outlined,
-                  color: AppTheme.successColor,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const TeamOverviewScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ],
-              if (projects.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Progetti in evidenza',
-                      style: AppTheme.heading3,
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ManageProjectsScreen(),
-                          ),
-                        );
-                      },
-                      child: const Text('Vedi tutti'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ...projects.take(4).toList().asMap().entries.map((indexed) {
-                  final idx = indexed.key;
-                  final project = indexed.value;
-                  return AnimatedReveal(
-                    delay: Duration(milliseconds: 280 + (idx * 40)),
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: ProjectCard(
+                const SizedBox(height: 16),
+                AnimatedReveal(
+                  delay: const Duration(milliseconds: 120),
+                  child: GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 1.32,
+                    children: [
+                      StatCard(
+                        title: 'Membri Team',
+                        value: teamMembers.length.toString(),
+                        icon: Icons.people_alt_outlined,
+                        color: AppTheme.primaryColor,
                         onTap: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  ProjectDetailScreen(projectId: project.id),
+                              builder: (_) => authService.isAdmin
+                                  ? const ManageUsersScreen()
+                                  : const TeamOverviewScreen(),
                             ),
                           );
                         },
-                        name: project.name,
-                        description: project.description,
-                        color: _parseColor(project.color),
+                      ),
+                      StatCard(
+                        title: 'Ore Team Mese',
+                        value: teamHours.toStringAsFixed(1),
+                        icon: Icons.timer_outlined,
+                        color: AppTheme.secondaryColor,
+                      ),
+                      StatCard(
+                        title: 'Completion Medio',
+                        value: '${(avgCompletion * 100).round()}%',
+                        icon: Icons.speed,
+                        color: AppTheme.successColor,
+                      ),
+                      StatCard(
+                        title: 'Progetti Attivi',
+                        value: projects.length.toString(),
+                        icon: Icons.folder_open,
+                        color: AppTheme.accentColor,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ManageProjectsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                if (topContributor != null) ...[
+                  const SizedBox(height: 20),
+                  AnimatedReveal(
+                    delay: const Duration(milliseconds: 170),
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PersonDetailScreen(
+                              userId: topContributor.user.id,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: AppTheme.emeraldGradient,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.emoji_events_outlined,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Top Contributor',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  Text(
+                                    topContributor.user.fullName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              '${topContributor.totalHours.toStringAsFixed(1)}h',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.chevron_right,
+                              color: Colors.white,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  );
-                }),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                const Text(
+                  'Andamento per sviluppatore',
+                  style: AppTheme.heading3,
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFDCE8F9)),
+                  ),
+                  child: userStats.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Text(
+                            'Nessun membro team disponibile.',
+                            style: AppTheme.bodyMedium,
+                          ),
+                        )
+                      : Column(
+                          children: userStats.asMap().entries.map((indexed) {
+                            final idx = indexed.key;
+                            final stat = indexed.value;
+                            final isAlert =
+                                stat.totalHours < (targetHoursPerUser * 0.75);
+
+                            return AnimatedReveal(
+                              delay: Duration(milliseconds: 220 + (idx * 35)),
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => PersonDetailScreen(
+                                        userId: stat.user.id,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 14),
+                                  child: Column(
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              stat.user.fullName,
+                                              style: AppTheme.bodyLarge,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${stat.totalHours.toStringAsFixed(1)}h',
+                                            style: AppTheme.bodyMedium.copyWith(
+                                              color: isAlert
+                                                  ? AppTheme.errorColor
+                                                  : AppTheme.textPrimaryColor,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Perfetti: ${stat.perfectDays}',
+                                            style: AppTheme.caption,
+                                          ),
+                                          const SizedBox(width: 2),
+                                          const Icon(
+                                            Icons.chevron_right,
+                                            size: 16,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: LinearProgressIndicator(
+                                          value: stat.completionRate.clamp(
+                                            0.0,
+                                            1.0,
+                                          ),
+                                          minHeight: 8,
+                                          backgroundColor:
+                                              AppTheme.surfaceMutedColor,
+                                          color: isAlert
+                                              ? AppTheme.errorColor
+                                              : AppTheme.primaryColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                ),
+                const SizedBox(height: 20),
+                const Text('Azioni rapide', style: AppTheme.heading3),
+                const SizedBox(height: 10),
+                if (authService.isAdmin) ...[
+                  _QuickActionCard(
+                    title: 'Console utenti',
+                    subtitle: 'Assegna ruoli, TL e membri team',
+                    icon: Icons.admin_panel_settings_outlined,
+                    color: AppTheme.primaryColor,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ManageUsersScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                _QuickActionCard(
+                  title: 'Gestisci Progetti',
+                  subtitle: 'Aggiorna backlog progetti e assegnazioni',
+                  icon: Icons.folder_copy_outlined,
+                  color: AppTheme.secondaryColor,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ManageProjectsScreen(),
+                      ),
+                    );
+                  },
+                ),
+                if (currentUser.role == UserRole.manager ||
+                    currentUser.role == UserRole.teamLead) ...[
+                  const SizedBox(height: 10),
+                  _QuickActionCard(
+                    title: 'Il mio team',
+                    subtitle: 'Vedi struttura e persone assegnate',
+                    icon: Icons.groups_outlined,
+                    color: AppTheme.successColor,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const TeamOverviewScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+                if (projects.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Progetti in evidenza',
+                        style: AppTheme.heading3,
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ManageProjectsScreen(),
+                            ),
+                          );
+                        },
+                        child: const Text('Vedi tutti'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ...projects.take(4).toList().asMap().entries.map((indexed) {
+                    final idx = indexed.key;
+                    final project = indexed.value;
+                    return AnimatedReveal(
+                      delay: Duration(milliseconds: 280 + (idx * 40)),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: ProjectCard(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    ProjectDetailScreen(projectId: project.id),
+                              ),
+                            );
+                          },
+                          name: project.name,
+                          description: project.description,
+                          color: _parseColor(project.color),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

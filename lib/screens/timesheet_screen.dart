@@ -26,10 +26,14 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
     final dataService = context.watch<DataService>();
     final user = authService.currentUser;
     final userId = user?.id ?? '';
+    final visibleProjects = user == null
+        ? <Project>[]
+        : dataService.getProjectsVisibleForUser(user);
 
     final todayEntries = dataService.getEntriesForDate(userId, _selectedDate)
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     final dailyTotal = dataService.getDailyHours(userId, _selectedDate);
+    final canAddEntry = dailyTotal < 8.0 && visibleProjects.isNotEmpty;
 
     final monthStart = DateTime(_selectedDate.year, _selectedDate.month, 1);
     final monthEnd = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
@@ -173,7 +177,7 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                           style: AppTheme.heading3,
                         ),
                         TextButton.icon(
-                          onPressed: dailyTotal >= 8.0
+                          onPressed: !canAddEntry
                               ? null
                               : () {
                                   _openEntrySheet(
@@ -186,6 +190,19 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                         ),
                       ],
                     ),
+                    if (visibleProjects.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Nessun progetto assegnato: chiedi a TL/Manager di assegnarti un progetto.',
+                            style: AppTheme.bodySmall.copyWith(
+                              color: AppTheme.warningColor,
+                            ),
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 10),
                   ],
                 ),
@@ -258,14 +275,37 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
     final formKey = GlobalKey<FormState>();
     final dataService = context.read<DataService>();
     final authService = context.read<AuthService>();
+    final currentUser = authService.currentUser;
+    if (currentUser == null) {
+      return;
+    }
     final notesController = TextEditingController(text: entry?.notes);
 
+    final availableProjects = dataService
+        .getProjectsVisibleForUser(currentUser)
+        .where((project) => project.isActive)
+        .toList();
+    final globalVacationProject = _findVacationProject(
+      dataService.projects.where((project) => project.isActive).toList(),
+    );
+    if (globalVacationProject != null &&
+        !availableProjects.any(
+          (project) => project.id == globalVacationProject.id,
+        )) {
+      availableProjects.add(globalVacationProject);
+    }
     Project? selectedProject = entry != null
         ? dataService.getProjectById(entry.projectId)
         : null;
+    if (selectedProject != null &&
+        !availableProjects.any(
+          (project) => project.id == selectedProject!.id,
+        )) {
+      availableProjects.add(selectedProject);
+    }
     double selectedHours = entry?.hours ?? 0.5;
 
-    final vacationProject = _findVacationProject(dataService.projects);
+    final vacationProject = _findVacationProject(availableProjects);
     final messenger = ScaffoldMessenger.of(context);
 
     await showModalBottomSheet(
@@ -274,7 +314,7 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setLocalState) {
-          final userId = authService.currentUser!.id;
+          final userId = currentUser.id;
           final media = MediaQuery.of(context);
           final currentDailyTotal = dataService.getDailyHours(userId, date);
           final alreadyUsedHours = entry != null
@@ -334,8 +374,7 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                                   labelText: 'Progetto',
                                   prefixIcon: Icon(Icons.folder_open),
                                 ),
-                                items: dataService.projects
-                                    .where((p) => p.isActive)
+                                items: availableProjects
                                     .map(
                                       (project) => DropdownMenuItem(
                                         value: project,
@@ -492,7 +531,22 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                                   return;
                                 }
 
-                                final userId = authService.currentUser!.id;
+                                if (!dataService.canTrackProject(
+                                  user: currentUser,
+                                  project: selectedProject!,
+                                )) {
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Non puoi consuntivare su questo progetto.',
+                                      ),
+                                      backgroundColor: AppTheme.errorColor,
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                final userId = currentUser.id;
                                 final currentDailyTotal = dataService
                                     .getDailyHours(userId, date);
                                 final otherHours = entry != null
@@ -526,6 +580,7 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                                   );
                                   success = await dataService.addTimesheetEntry(
                                     newEntry,
+                                    actor: currentUser,
                                   );
                                 } else {
                                   final updatedEntry = entry.copyWith(
@@ -537,7 +592,10 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                                     updatedAt: DateTime.now(),
                                   );
                                   success = await dataService
-                                      .updateTimesheetEntry(updatedEntry);
+                                      .updateTimesheetEntry(
+                                        updatedEntry,
+                                        actor: currentUser,
+                                      );
                                 }
 
                                 if (!sheetContext.mounted) {

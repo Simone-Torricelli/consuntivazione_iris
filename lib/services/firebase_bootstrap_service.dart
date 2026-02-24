@@ -17,18 +17,16 @@ class FirebaseBootstrapService {
       return;
     }
 
-    if (!DefaultFirebaseOptions.isConfigured ||
-        DefaultFirebaseOptions.currentPlatform == null) {
+    final options = DefaultFirebaseOptions.currentPlatform;
+    if (!DefaultFirebaseOptions.isConfigured || options == null) {
       debugPrint(
-        'Firebase disabilitato: configura lib/firebase/firebase_options.dart',
+        'Firebase disabilitato: piattaforma corrente non configurata in lib/firebase/firebase_options.dart',
       );
       return;
     }
 
     try {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
+      await Firebase.initializeApp(options: options);
       _isReady = true;
       debugPrint('Firebase inizializzato correttamente.');
     } catch (e) {

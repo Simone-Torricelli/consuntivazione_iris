@@ -30,6 +30,21 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
   ];
 
   Future<void> _openProjectSheet({Project? project}) async {
+    final dataService = context.read<DataService>();
+    final authService = context.read<AuthService>();
+    final currentUser = authService.currentUser;
+    if (currentUser == null) {
+      return;
+    }
+
+    final canSetTeamLeadOwner =
+        currentUser.role == UserRole.admin ||
+        currentUser.role == UserRole.manager;
+    final teamLeads = dataService.getUsersByRole(UserRole.teamLead)
+      ..sort((a, b) => a.fullName.compareTo(b.fullName));
+    final developers = dataService.getUsersByRole(UserRole.employee)
+      ..sort((a, b) => a.fullName.compareTo(b.fullName));
+
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController(text: project?.name ?? '');
     final descController = TextEditingController(
@@ -38,6 +53,12 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
     Color selectedColor = project != null
         ? Color(int.parse(project.color.replaceFirst('#', '0xFF')))
         : _projectColors[0];
+    String? selectedOwnerUserId = project?.ownerUserId;
+    final selectedDeveloperIds = <String>{...project?.assignedUserIds ?? []};
+
+    if (currentUser.role == UserRole.teamLead) {
+      selectedOwnerUserId = currentUser.id;
+    }
 
     await showModalBottomSheet(
       context: context,
@@ -86,7 +107,7 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                               ),
                               const SizedBox(height: 6),
                               const Text(
-                                'Definisci nome, descrizione e colore del progetto.',
+                                'Definisci owner TL, persone assegnate, nome e descrizione.',
                                 style: AppTheme.bodyMedium,
                               ),
                               const SizedBox(height: 16),
@@ -118,6 +139,90 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                                   return null;
                                 },
                               ),
+                              const SizedBox(height: 14),
+                              if (canSetTeamLeadOwner) ...[
+                                DropdownButtonFormField<String>(
+                                  initialValue: selectedOwnerUserId,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Team Lead owner',
+                                    prefixIcon: Icon(Icons.groups_outlined),
+                                  ),
+                                  items: teamLeads
+                                      .map(
+                                        (tl) => DropdownMenuItem<String>(
+                                          value: tl.id,
+                                          child: Text(tl.fullName),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (value) {
+                                    setSheetState(() {
+                                      selectedOwnerUserId = value;
+                                    });
+                                  },
+                                ),
+                              ] else if (currentUser.role == UserRole.teamLead)
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryColor.withValues(
+                                      alpha: 0.08,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Text(
+                                    'Owner progetto: Team Lead corrente',
+                                    style: AppTheme.bodySmall,
+                                  ),
+                                ),
+                              const SizedBox(height: 14),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'Persone assegnate',
+                                    style: AppTheme.bodyMedium,
+                                  ),
+                                  Text(
+                                    '${selectedDeveloperIds.length} selezionati',
+                                    style: AppTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              if (developers.isEmpty)
+                                const Text(
+                                  'Nessun developer disponibile.',
+                                  style: AppTheme.bodySmall,
+                                )
+                              else
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: developers.map((developer) {
+                                    final isSelected = selectedDeveloperIds
+                                        .contains(developer.id);
+                                    return FilterChip(
+                                      selected: isSelected,
+                                      label: Text(developer.fullName),
+                                      onSelected: (value) {
+                                        setSheetState(() {
+                                          if (value) {
+                                            selectedDeveloperIds.add(
+                                              developer.id,
+                                            );
+                                          } else {
+                                            selectedDeveloperIds.remove(
+                                              developer.id,
+                                            );
+                                          }
+                                        });
+                                      },
+                                    );
+                                  }).toList(),
+                                ),
                               const SizedBox(height: 16),
                               const Text(
                                 'Colore progetto',
@@ -207,23 +312,22 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
 
                                 final colorHex =
                                     '#${selectedColor.toARGB32().toRadixString(16).substring(2)}';
+                                final assignedUserIds =
+                                    selectedDeveloperIds.toList()..sort();
+                                final ownerUserId = canSetTeamLeadOwner
+                                    ? selectedOwnerUserId
+                                    : currentUser.role == UserRole.teamLead
+                                    ? currentUser.id
+                                    : project?.ownerUserId;
 
                                 if (project == null) {
-                                  final currentUser = context
-                                      .read<AuthService>()
-                                      .currentUser;
-                                  final ownerUserId =
-                                      currentUser?.role == UserRole.teamLead ||
-                                          currentUser?.role == UserRole.manager
-                                      ? currentUser?.id
-                                      : null;
-
                                   final newProject = Project(
                                     id: 'proj_${DateTime.now().millisecondsSinceEpoch}',
                                     name: nameController.text.trim(),
                                     description: descController.text.trim(),
                                     color: colorHex,
                                     ownerUserId: ownerUserId,
+                                    assignedUserIds: assignedUserIds,
                                     createdAt: DateTime.now(),
                                   );
                                   await context.read<DataService>().addProject(
@@ -234,6 +338,8 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                                     name: nameController.text.trim(),
                                     description: descController.text.trim(),
                                     color: colorHex,
+                                    ownerUserId: ownerUserId,
+                                    assignedUserIds: assignedUserIds,
                                   );
                                   await context
                                       .read<DataService>()
@@ -262,7 +368,6 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
       ),
     );
 
-    // Let the sheet close animation finish before disposing.
     await Future<void>.delayed(const Duration(milliseconds: 400));
     nameController.dispose();
     descController.dispose();
@@ -475,6 +580,24 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                       itemCount: projects.length,
                       itemBuilder: (context, index) {
                         final project = projects[index];
+                        final owner = project.ownerUserId == null
+                            ? null
+                            : dataService.getUserById(project.ownerUserId!);
+                        final ownerLabel = owner == null
+                            ? 'TL non assegnato'
+                            : 'TL: ${owner.fullName}';
+                        final workersCount = project.assignedUserIds.length;
+                        final workersLabel = workersCount == 1
+                            ? '1 persona assegnata'
+                            : '$workersCount persone assegnate';
+                        final description =
+                            '${project.description}\n$ownerLabel • $workersLabel';
+                        final canModifyProject =
+                            canManageProjects &&
+                            (currentUser == null ||
+                                currentUser.role != UserRole.teamLead ||
+                                project.ownerUserId == currentUser.id);
+
                         return TweenAnimationBuilder<double>(
                           tween: Tween(begin: 0.0, end: 1.0),
                           duration: Duration(milliseconds: 260 + (index * 40)),
@@ -499,16 +622,16 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                                 );
                               },
                               name: project.name,
-                              description: project.description,
+                              description: description,
                               color: Color(
                                 int.parse(
                                   project.color.replaceFirst('#', '0xFF'),
                                 ),
                               ),
-                              onEdit: canManageProjects
+                              onEdit: canModifyProject
                                   ? () => _openProjectSheet(project: project)
                                   : null,
-                              onDelete: canManageProjects
+                              onDelete: canModifyProject
                                   ? () => _openDeleteProjectSheet(project)
                                   : null,
                             ),

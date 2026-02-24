@@ -261,10 +261,21 @@ class DataService extends ChangeNotifier {
     }
   }
 
-  Future<bool> addTimesheetEntry(TimesheetEntry entry) async {
+  Future<bool> addTimesheetEntry(TimesheetEntry entry, {User? actor}) async {
     final dailyTotal = getDailyHours(entry.userId, entry.date);
     if (dailyTotal + entry.hours > 8.0) {
       return false;
+    }
+
+    if (actor != null) {
+      if (actor.role == UserRole.employee && actor.id != entry.userId) {
+        return false;
+      }
+
+      final project = getProjectById(entry.projectId);
+      if (project == null || !canTrackProject(user: actor, project: project)) {
+        return false;
+      }
     }
 
     _timesheetEntries.add(entry);
@@ -280,9 +291,21 @@ class DataService extends ChangeNotifier {
     return true;
   }
 
-  Future<bool> updateTimesheetEntry(TimesheetEntry entry) async {
+  Future<bool> updateTimesheetEntry(TimesheetEntry entry, {User? actor}) async {
     final index = _timesheetEntries.indexWhere((t) => t.id == entry.id);
     if (index != -1) {
+      if (actor != null) {
+        if (actor.role == UserRole.employee && actor.id != entry.userId) {
+          return false;
+        }
+
+        final project = getProjectById(entry.projectId);
+        if (project == null ||
+            !canTrackProject(user: actor, project: project)) {
+          return false;
+        }
+      }
+
       final otherEntries = _timesheetEntries.where(
         (t) =>
             t.userId == entry.userId &&
@@ -580,17 +603,55 @@ class DataService extends ChangeNotifier {
 
   List<Project> getProjectsVisibleForUser(User user) {
     final activeProjects = _projects.where((p) => p.isActive).toList();
-    if (user.role == UserRole.teamLead) {
-      return activeProjects.where((p) => p.ownerUserId == user.id).toList();
+
+    switch (user.role) {
+      case UserRole.admin:
+      case UserRole.manager:
+        return activeProjects;
+      case UserRole.teamLead:
+        return activeProjects.where((p) => p.ownerUserId == user.id).toList();
+      case UserRole.employee:
+        return activeProjects
+            .where((p) => p.assignedUserIds.contains(user.id))
+            .toList();
     }
-    return activeProjects;
   }
 
   bool canAccessProject({required User viewer, required Project project}) {
-    if (viewer.role == UserRole.teamLead) {
-      return project.ownerUserId == viewer.id;
+    switch (viewer.role) {
+      case UserRole.admin:
+      case UserRole.manager:
+        return true;
+      case UserRole.teamLead:
+        return project.ownerUserId == viewer.id || isVacationProject(project);
+      case UserRole.employee:
+        return project.assignedUserIds.contains(viewer.id) ||
+            isVacationProject(project);
     }
-    return true;
+  }
+
+  bool canTrackProject({required User user, required Project project}) {
+    switch (user.role) {
+      case UserRole.admin:
+      case UserRole.manager:
+        return true;
+      case UserRole.teamLead:
+        return project.ownerUserId == user.id || isVacationProject(project);
+      case UserRole.employee:
+        return project.assignedUserIds.contains(user.id) ||
+            isVacationProject(project);
+    }
+  }
+
+  bool hasUserWorkedOnProject(String userId, String projectId) {
+    return _timesheetEntries.any(
+      (entry) => entry.userId == userId && entry.projectId == projectId,
+    );
+  }
+
+  bool isVacationProject(Project project) {
+    final normalized = project.name.toLowerCase().trim();
+    return normalized.contains('ferie');
   }
 
   bool canViewUser({required User viewer, required User target}) {

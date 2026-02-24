@@ -62,17 +62,28 @@ class ProjectDetailScreen extends StatelessWidget {
         .map((entry) => DateUtils.dateOnly(entry.date))
         .toSet()
         .length;
+    final owner = project.ownerUserId == null
+        ? null
+        : dataService.getUserById(project.ownerUserId!);
 
-    final contributors =
-        dataService
-            .getHoursByUserForProject(
-              project.id,
-              startDate: monthStart,
-              endDate: monthEnd,
-            )
-            .entries
-            .toList()
-          ..sort((a, b) => b.value.compareTo(a.value));
+    final contributorHours = dataService.getHoursByUserForProject(
+      project.id,
+      startDate: monthStart,
+      endDate: monthEnd,
+    );
+    for (final userId in project.assignedUserIds) {
+      contributorHours.putIfAbsent(userId, () => 0);
+    }
+    final contributors = contributorHours.entries.toList()
+      ..sort((a, b) {
+        final byHours = b.value.compareTo(a.value);
+        if (byHours != 0) {
+          return byHours;
+        }
+        final nameA = dataService.getUserById(a.key)?.fullName ?? '';
+        final nameB = dataService.getUserById(b.key)?.fullName ?? '';
+        return nameA.compareTo(nameB);
+      });
 
     return Scaffold(
       appBar: AppBar(title: Text(project.name)),
@@ -118,6 +129,37 @@ class ProjectDetailScreen extends StatelessWidget {
                       child: Text(
                         project.description,
                         style: AppTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            AnimatedReveal(
+              delay: const Duration(milliseconds: 130),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFDCE8F9)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.groups_outlined,
+                      color: AppTheme.primaryColor,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        owner == null
+                            ? 'Team Lead owner non assegnato'
+                            : 'Team Lead owner: ${owner.fullName}',
+                        style: AppTheme.bodyMedium.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ],

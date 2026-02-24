@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../models/user_model.dart';
 import '../models/timesheet_entry.dart';
 import '../services/data_service.dart';
 import '../theme/app_theme.dart';
@@ -31,7 +32,10 @@ class PersonDetailScreen extends StatelessWidget {
     final entries = dataService.getEntriesForUser(user.id, monthStart, monthEnd)
       ..sort((a, b) => b.date.compareTo(a.date));
 
-    final totalHours = entries.fold<double>(0, (sum, entry) => sum + entry.hours);
+    final totalHours = entries.fold<double>(
+      0,
+      (sum, entry) => sum + entry.hours,
+    );
     final workingDays = entries
         .map((entry) => DateUtils.dateOnly(entry.date))
         .toSet()
@@ -43,22 +47,22 @@ class PersonDetailScreen extends StatelessWidget {
     );
     final streak = dataService.getCurrentStreak(user.id);
 
-    final byProject = dataService.getHoursByProjectForUser(
-      user.id,
-      startDate: monthStart,
-      endDate: monthEnd,
-    ).entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    final byProject =
+        dataService
+            .getHoursByProjectForUser(
+              user.id,
+              startDate: monthStart,
+              endDate: monthEnd,
+            )
+            .entries
+            .toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
 
     return Scaffold(
       appBar: AppBar(title: Text(user.fullName)),
       body: DecoratedBox(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFFF4F8FF), Color(0xFFEAF3FF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
+          gradient: AppTheme.appBackgroundGradient,
         ),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
@@ -79,9 +83,18 @@ class PersonDetailScreen extends StatelessWidget {
               child: _StatsRow(
                 items: [
                   _StatItem('Giorni perfetti', '$perfectDays', Icons.bolt),
-                  _StatItem('Media giorno',
-                      workingDays == 0 ? '0.0h' : '${(totalHours / workingDays).toStringAsFixed(1)}h', Icons.query_stats),
-                  _StatItem('Consuntivi', '${entries.length}', Icons.assignment_outlined),
+                  _StatItem(
+                    'Media giorno',
+                    workingDays == 0
+                        ? '0.0h'
+                        : '${(totalHours / workingDays).toStringAsFixed(1)}h',
+                    Icons.query_stats,
+                  ),
+                  _StatItem(
+                    'Consuntivi',
+                    '${entries.length}',
+                    Icons.assignment_outlined,
+                  ),
                 ],
               ),
             ),
@@ -164,7 +177,11 @@ class PersonDetailScreen extends StatelessWidget {
 
               return AnimatedReveal(
                 delay: Duration(milliseconds: 300 + (idx * 35)),
-                child: _EntryTile(entry: entry, projectName: project?.name ?? 'Progetto', color: color),
+                child: _EntryTile(
+                  entry: entry,
+                  projectName: project?.name ?? 'Progetto',
+                  color: color,
+                ),
               );
             }),
           ],

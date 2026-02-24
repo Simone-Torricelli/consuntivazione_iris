@@ -19,7 +19,9 @@ class AdminDashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dataService = context.watch<DataService>();
-    final users = dataService.users.where((u) => u.role == UserRole.employee).toList();
+    final users = dataService.users
+        .where((u) => u.role == UserRole.employee)
+        .toList();
     final projects = dataService.projects.where((p) => p.isActive).toList();
 
     final now = DateTime.now();
@@ -34,8 +36,15 @@ class AdminDashboardScreen extends StatelessWidget {
     final targetHoursPerUser = elapsedWorkingDays * 8.0;
 
     final userStats = users.map((user) {
-      final entries = dataService.getEntriesForUser(user.id, monthStart, monthEnd);
-      final totalHours = entries.fold<double>(0, (sum, entry) => sum + entry.hours);
+      final entries = dataService.getEntriesForUser(
+        user.id,
+        monthStart,
+        monthEnd,
+      );
+      final totalHours = entries.fold<double>(
+        0,
+        (sum, entry) => sum + entry.hours,
+      );
       final perfectDays = dataService.getPerfectDaysCount(
         userId: user.id,
         startDate: monthStart,
@@ -53,11 +62,14 @@ class AdminDashboardScreen extends StatelessWidget {
       );
     }).toList()..sort((a, b) => b.totalHours.compareTo(a.totalHours));
 
-    final teamHours = userStats.fold<double>(0, (sum, stat) => sum + stat.totalHours);
+    final teamHours = userStats.fold<double>(
+      0,
+      (sum, stat) => sum + stat.totalHours,
+    );
     final avgCompletion = userStats.isEmpty
         ? 0.0
         : userStats.fold<double>(0, (sum, stat) => sum + stat.completionRate) /
-            userStats.length;
+              userStats.length;
     final alertCount = userStats
         .where((stat) => stat.totalHours < (targetHoursPerUser * 0.75))
         .length;
@@ -67,11 +79,7 @@ class AdminDashboardScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Dashboard TL/Manager')),
       body: DecoratedBox(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFFF4F8FF), Color(0xFFEAF3FF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
+          gradient: AppTheme.appBackgroundGradient,
         ),
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
@@ -217,7 +225,10 @@ class AdminDashboardScreen extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 20),
-              const Text('Andamento per sviluppatore', style: AppTheme.heading3),
+              const Text(
+                'Andamento per sviluppatore',
+                style: AppTheme.heading3,
+              ),
               const SizedBox(height: 10),
               Container(
                 width: double.infinity,
@@ -239,7 +250,8 @@ class AdminDashboardScreen extends StatelessWidget {
                         children: userStats.asMap().entries.map((indexed) {
                           final idx = indexed.key;
                           final stat = indexed.value;
-                          final isAlert = stat.totalHours < (targetHoursPerUser * 0.75);
+                          final isAlert =
+                              stat.totalHours < (targetHoursPerUser * 0.75);
 
                           return AnimatedReveal(
                             delay: Duration(milliseconds: 220 + (idx * 35)),
@@ -281,16 +293,23 @@ class AdminDashboardScreen extends StatelessWidget {
                                           style: AppTheme.caption,
                                         ),
                                         const SizedBox(width: 2),
-                                        const Icon(Icons.chevron_right, size: 16),
+                                        const Icon(
+                                          Icons.chevron_right,
+                                          size: 16,
+                                        ),
                                       ],
                                     ),
                                     const SizedBox(height: 6),
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
                                       child: LinearProgressIndicator(
-                                        value: stat.completionRate.clamp(0.0, 1.0),
+                                        value: stat.completionRate.clamp(
+                                          0.0,
+                                          1.0,
+                                        ),
                                         minHeight: 8,
-                                        backgroundColor: AppTheme.surfaceMutedColor,
+                                        backgroundColor:
+                                            AppTheme.surfaceMutedColor,
                                         color: isAlert
                                             ? AppTheme.errorColor
                                             : AppTheme.primaryColor,
@@ -315,7 +334,9 @@ class AdminDashboardScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const ManageUsersScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const ManageUsersScreen(),
+                    ),
                   );
                 },
               ),
@@ -339,7 +360,10 @@ class AdminDashboardScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Progetti in evidenza', style: AppTheme.heading3),
+                    const Text(
+                      'Progetti in evidenza',
+                      style: AppTheme.heading3,
+                    ),
                     TextButton(
                       onPressed: () {
                         Navigator.push(
@@ -366,9 +390,8 @@ class AdminDashboardScreen extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => ProjectDetailScreen(
-                                projectId: project.id,
-                              ),
+                              builder: (_) =>
+                                  ProjectDetailScreen(projectId: project.id),
                             ),
                           );
                         },

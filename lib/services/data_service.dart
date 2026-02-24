@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/project_model.dart';
 import '../models/timesheet_entry.dart';
 import '../models/user_model.dart';
+import '../utils/work_calendar_utils.dart';
 import 'firebase_sync_service.dart';
 
 class DataService extends ChangeNotifier {
@@ -465,7 +466,10 @@ class DataService extends ChangeNotifier {
   }
 
   bool isWorkingDay(DateTime date) {
-    return date.weekday >= DateTime.monday && date.weekday <= DateTime.friday;
+    final day = DateUtils.dateOnly(date);
+    final isWeekday =
+        day.weekday >= DateTime.monday && day.weekday <= DateTime.friday;
+    return isWeekday && !WorkCalendarUtils.isItalianPublicHoliday(day);
   }
 
   int getWorkingDaysInRange(DateTime startDate, DateTime endDate) {
@@ -493,12 +497,20 @@ class DataService extends ChangeNotifier {
   }
 
   DateTime getPenultimateWorkingDay(DateTime monthReference) {
+    return _nthWorkingDayFromMonthEnd(monthReference, 2);
+  }
+
+  DateTime getLastWorkingDay(DateTime monthReference) {
+    return _nthWorkingDayFromMonthEnd(monthReference, 1);
+  }
+
+  DateTime _nthWorkingDayFromMonthEnd(DateTime monthReference, int n) {
     var cursor = DateTime(monthReference.year, monthReference.month + 1, 0);
     var found = 0;
     while (true) {
       if (isWorkingDay(cursor)) {
         found++;
-        if (found == 2) {
+        if (found == n) {
           return DateUtils.dateOnly(cursor);
         }
       }

@@ -6,6 +6,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../services/auth_service.dart';
 import '../services/data_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/animated_reveal.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -31,7 +32,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       monthStart,
       monthEnd,
     );
-    final salaryDay = dataService.getPenultimateWorkingDay(_focusedDay);
+    final salaryDay = dataService.getLastWorkingDay(_focusedDay);
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
     final totalMonthHours = monthEntries.fold<double>(
       0,
@@ -58,166 +60,174 @@ class _CalendarScreenState extends State<CalendarScreen> {
       appBar: AppBar(title: const Text('Calendario e Analytics')),
       body: DecoratedBox(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFFF4F8FF), Color(0xFFEAF3FF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
+          gradient: AppTheme.appBackgroundGradient,
         ),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 24 + bottomInset),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _MonthOverviewCard(
-                focusedDay: _focusedDay,
-                totalMonthHours: totalMonthHours,
-                workingDaysWithEntries: workingDaysWithEntries,
-                perfectDays: perfectDays,
-                workingDaysInMonth: workingDaysInMonth,
-                salaryDay: salaryDay,
+              AnimatedReveal(
+                delay: const Duration(milliseconds: 70),
+                child: _MonthOverviewCard(
+                  focusedDay: _focusedDay,
+                  totalMonthHours: totalMonthHours,
+                  workingDaysWithEntries: workingDaysWithEntries,
+                  perfectDays: perfectDays,
+                  workingDaysInMonth: workingDaysInMonth,
+                  salaryDay: salaryDay,
+                ),
               ),
               const SizedBox(height: 14),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFFDCE8F9)),
-                ),
-                padding: const EdgeInsets.all(8),
-                child: TableCalendar(
-                  firstDay: DateTime.utc(2020, 1, 1),
-                  lastDay: DateTime.utc(2035, 12, 31),
-                  focusedDay: _focusedDay,
-                  locale: 'it',
-                  selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                  startingDayOfWeek: StartingDayOfWeek.monday,
-                  calendarFormat: CalendarFormat.month,
-                  availableCalendarFormats: const {
-                    CalendarFormat.month: 'Mese',
-                  },
-                  eventLoader: (day) =>
-                      dataService.getEntriesForDate(userId, day),
-                  onDaySelected: (selectedDay, focusedDay) {
-                    setState(() {
-                      _selectedDay = DateUtils.dateOnly(selectedDay);
-                      _focusedDay = DateUtils.dateOnly(focusedDay);
-                    });
-                  },
-                  onPageChanged: (focusedDay) {
-                    setState(() {
-                      _focusedDay = DateUtils.dateOnly(focusedDay);
-                    });
-                  },
-                  headerStyle: const HeaderStyle(
-                    titleCentered: true,
-                    formatButtonVisible: false,
-                    titleTextStyle: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.textPrimaryColor,
-                    ),
+              AnimatedReveal(
+                delay: const Duration(milliseconds: 120),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: const Color(0xFFDCE8F9)),
                   ),
-                  calendarStyle: CalendarStyle(
-                    outsideTextStyle: TextStyle(
-                      color: AppTheme.textLightColor.withOpacity(0.6),
+                  padding: const EdgeInsets.all(8),
+                  child: TableCalendar(
+                    firstDay: DateTime.utc(2020, 1, 1),
+                    lastDay: DateTime.utc(2035, 12, 31),
+                    focusedDay: _focusedDay,
+                    locale: 'it',
+                    selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                    startingDayOfWeek: StartingDayOfWeek.monday,
+                    calendarFormat: CalendarFormat.month,
+                    availableCalendarFormats: const {
+                      CalendarFormat.month: 'Mese',
+                    },
+                    eventLoader: (day) =>
+                        dataService.getEntriesForDate(userId, day),
+                    onDaySelected: (selectedDay, focusedDay) {
+                      setState(() {
+                        _selectedDay = DateUtils.dateOnly(selectedDay);
+                        _focusedDay = DateUtils.dateOnly(focusedDay);
+                      });
+                    },
+                    onPageChanged: (focusedDay) {
+                      setState(() {
+                        _focusedDay = DateUtils.dateOnly(focusedDay);
+                      });
+                    },
+                    headerStyle: const HeaderStyle(
+                      titleCentered: true,
+                      formatButtonVisible: false,
+                      titleTextStyle: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimaryColor,
+                      ),
                     ),
-                    weekendTextStyle: const TextStyle(
-                      color: AppTheme.textLightColor,
-                      fontWeight: FontWeight.w600,
+                    calendarStyle: CalendarStyle(
+                      outsideTextStyle: TextStyle(
+                        color: AppTheme.textLightColor.withValues(alpha: 0.6),
+                      ),
+                      weekendTextStyle: const TextStyle(
+                        color: AppTheme.textLightColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      todayDecoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.16),
+                        shape: BoxShape.circle,
+                      ),
+                      selectedDecoration: const BoxDecoration(
+                        color: AppTheme.primaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                      markerDecoration: const BoxDecoration(
+                        color: AppTheme.secondaryColor,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                    todayDecoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withOpacity(0.16),
-                      shape: BoxShape.circle,
-                    ),
-                    selectedDecoration: const BoxDecoration(
-                      color: AppTheme.primaryColor,
-                      shape: BoxShape.circle,
-                    ),
-                    markerDecoration: const BoxDecoration(
-                      color: AppTheme.secondaryColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  calendarBuilders: CalendarBuilders(
-                    prioritizedBuilder: (context, day, focusedDay) {
-                      if (!isSameDay(day, salaryDay)) {
-                        return null;
-                      }
+                    calendarBuilders: CalendarBuilders(
+                      prioritizedBuilder: (context, day, focusedDay) {
+                        if (!isSameDay(day, salaryDay)) {
+                          return null;
+                        }
 
-                      final isSelected = isSameDay(day, _selectedDay);
-                      return Container(
-                        margin: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          gradient: isSelected
-                              ? null
-                              : AppTheme.sunriseGradient,
-                          color: isSelected ? AppTheme.primaryColor : null,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Stack(
-                          children: [
-                            Center(
-                              child: Text(
-                                '${day.day}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
+                        final isSelected = isSameDay(day, _selectedDay);
+                        return Container(
+                          margin: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            gradient: isSelected
+                                ? null
+                                : AppTheme.sunriseGradient,
+                            color: isSelected ? AppTheme.primaryColor : null,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Stack(
+                            children: [
+                              Center(
+                                child: Text(
+                                  '${day.day}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
+                              const Positioned(
+                                right: 3,
+                                top: 3,
+                                child: Icon(
+                                  Icons.payments_outlined,
+                                  color: Colors.white,
+                                  size: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      markerBuilder: (context, date, events) {
+                        if (events.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+
+                        final dayHours = dataService.getDailyHours(
+                          userId,
+                          date,
+                        );
+                        final markerColor = dayHours >= 8.0
+                            ? AppTheme.successColor
+                            : (dayHours >= 4.0
+                                  ? AppTheme.warningColor
+                                  : AppTheme.secondaryColor);
+
+                        return Positioned(
+                          bottom: 2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
                             ),
-                            const Positioned(
-                              right: 3,
-                              top: 3,
-                              child: Icon(
-                                Icons.payments_outlined,
+                            decoration: BoxDecoration(
+                              color: markerColor,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '${dayHours.toStringAsFixed(1)}h',
+                              style: const TextStyle(
+                                fontSize: 8,
                                 color: Colors.white,
-                                size: 11,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                          ],
-                        ),
-                      );
-                    },
-                    markerBuilder: (context, date, events) {
-                      if (events.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-
-                      final dayHours = dataService.getDailyHours(userId, date);
-                      final markerColor = dayHours >= 8.0
-                          ? AppTheme.successColor
-                          : (dayHours >= 4.0
-                                ? AppTheme.warningColor
-                                : AppTheme.secondaryColor);
-
-                      return Positioned(
-                        bottom: 2,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 1,
                           ),
-                          decoration: BoxDecoration(
-                            color: markerColor,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '${dayHours.toStringAsFixed(1)}h',
-                            style: const TextStyle(
-                              fontSize: 8,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 10),
-              const _LegendRow(),
+              const AnimatedReveal(
+                delay: Duration(milliseconds: 160),
+                child: _LegendRow(),
+              ),
               const SizedBox(height: 18),
               if (projectHours.isNotEmpty) ...[
                 const Text(
@@ -225,75 +235,79 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   style: AppTheme.heading3,
                 ),
                 const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFDCE8F9)),
-                  ),
-                  child: Column(
-                    children: projectHours.entries.map((entry) {
-                      final project = dataService.getProjectById(entry.key);
-                      final projectColor = _projectColor(project?.color);
-                      final percentage = totalMonthHours == 0
-                          ? 0.0
-                          : (entry.value / totalMonthHours).clamp(0.0, 1.0);
+                AnimatedReveal(
+                  delay: const Duration(milliseconds: 220),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFDCE8F9)),
+                    ),
+                    child: Column(
+                      children: projectHours.entries.map((entry) {
+                        final project = dataService.getProjectById(entry.key);
+                        final projectColor = _projectColor(project?.color);
+                        final percentage = totalMonthHours == 0
+                            ? 0.0
+                            : (entry.value / totalMonthHours).clamp(0.0, 1.0);
 
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 10,
-                                        height: 10,
-                                        decoration: BoxDecoration(
-                                          color: projectColor,
-                                          borderRadius: BorderRadius.circular(
-                                            3,
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 10,
+                                          height: 10,
+                                          decoration: BoxDecoration(
+                                            color: projectColor,
+                                            borderRadius: BorderRadius.circular(
+                                              3,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          project?.name ?? 'Progetto',
-                                          style: AppTheme.bodyMedium.copyWith(
-                                            fontWeight: FontWeight.w700,
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            project?.name ?? 'Progetto',
+                                            style: AppTheme.bodyMedium.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                Text(
-                                  '${entry.value.toStringAsFixed(1)}h',
-                                  style: AppTheme.bodyMedium,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: LinearProgressIndicator(
-                                minHeight: 8,
-                                value: percentage,
-                                backgroundColor: AppTheme.surfaceMutedColor,
-                                color: projectColor,
+                                  Text(
+                                    '${entry.value.toStringAsFixed(1)}h',
+                                    style: AppTheme.bodyMedium,
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
+                              const SizedBox(height: 6),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: LinearProgressIndicator(
+                                  minHeight: 8,
+                                  value: percentage,
+                                  backgroundColor: AppTheme.surfaceMutedColor,
+                                  color: projectColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ),
                 ),
               ],
@@ -310,46 +324,49 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   final project = dataService.getProjectById(entry.projectId);
                   final projectColor = _projectColor(project?.color);
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFDCE8F9)),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: projectColor.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(10),
+                  return AnimatedReveal(
+                    delay: const Duration(milliseconds: 260),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFDCE8F9)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: projectColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(Icons.folder, color: projectColor),
                           ),
-                          child: Icon(Icons.folder, color: projectColor),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                project?.name ?? 'Progetto',
-                                style: AppTheme.bodyLarge,
-                              ),
-                              if ((entry.notes ?? '').trim().isNotEmpty)
-                                Text(entry.notes!, style: AppTheme.bodySmall),
-                            ],
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  project?.name ?? 'Progetto',
+                                  style: AppTheme.bodyLarge,
+                                ),
+                                if ((entry.notes ?? '').trim().isNotEmpty)
+                                  Text(entry.notes!, style: AppTheme.bodySmall),
+                              ],
+                            ),
                           ),
-                        ),
-                        Text(
-                          '${entry.hours.toStringAsFixed(1)}h',
-                          style: AppTheme.heading3.copyWith(
-                            color: projectColor,
+                          Text(
+                            '${entry.hours.toStringAsFixed(1)}h',
+                            style: AppTheme.heading3.copyWith(
+                              color: projectColor,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   );
                 }),
@@ -405,7 +422,7 @@ class _MonthOverviewCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.25),
+            color: AppTheme.primaryColor.withValues(alpha: 0.25),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -451,7 +468,7 @@ class _MonthOverviewCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: completion,
               minHeight: 8,
-              backgroundColor: Colors.white.withOpacity(0.2),
+              backgroundColor: Colors.white.withValues(alpha: 0.2),
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
             ),
           ),
@@ -459,7 +476,7 @@ class _MonthOverviewCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.16),
+              color: Colors.white.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
@@ -471,7 +488,7 @@ class _MonthOverviewCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Stipendio: ${DateFormat('d MMM', 'it').format(salaryDay)}',
+                  'Stipendio (ultimo lavorativo): ${DateFormat('d MMM', 'it').format(salaryDay)}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w700,
@@ -508,7 +525,7 @@ class _InfoStat extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.82),
+            color: Colors.white.withValues(alpha: 0.82),
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),

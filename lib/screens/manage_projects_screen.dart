@@ -5,6 +5,7 @@ import '../models/project_model.dart';
 import '../services/auth_service.dart';
 import '../services/data_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/animated_reveal.dart';
 import '../widgets/project_card.dart';
 import 'project_detail_screen.dart';
 
@@ -337,26 +338,73 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
       appBar: AppBar(title: const Text('Projects Studio')),
       body: DecoratedBox(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFFF4F8FF), Color(0xFFEAF3FF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
+          gradient: AppTheme.appBackgroundGradient,
         ),
         child: Column(
           children: [
-            if (!canManageProjects)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.warningColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: AnimatedReveal(
+                delay: const Duration(milliseconds: 60),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.primaryGradient,
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.2),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.22),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.auto_awesome_outlined,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '${projects.length} progetti attivi',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: const Text(
-                  'Accesso in sola lettura: solo Admin, Manager e Team Lead possono creare o modificare progetti.',
-                  style: AppTheme.bodySmall,
+              ),
+            ),
+            if (!canManageProjects)
+              AnimatedReveal(
+                delay: const Duration(milliseconds: 100),
+                child: Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.warningColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    'Accesso in sola lettura: solo Admin, Manager e Team Lead possono creare o modificare progetti.',
+                    style: AppTheme.bodySmall,
+                  ),
                 ),
               ),
             Expanded(
@@ -413,7 +461,9 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => ProjectDetailScreen(projectId: project.id),
+                                    builder: (_) => ProjectDetailScreen(
+                                      projectId: project.id,
+                                    ),
                                   ),
                                 );
                               },

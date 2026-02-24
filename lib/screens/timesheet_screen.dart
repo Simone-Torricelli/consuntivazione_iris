@@ -7,6 +7,8 @@ import '../models/timesheet_entry.dart';
 import '../services/auth_service.dart';
 import '../services/data_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/animated_reveal.dart';
+import 'project_detail_screen.dart';
 
 class TimeSheetScreen extends StatefulWidget {
   const TimeSheetScreen({super.key});
@@ -39,7 +41,8 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
     final workingDaysInMonth = dataService.getWorkingDaysInMonth(_selectedDate);
     final monthlyXp = dataService.getMonthlyExperience(userId, _selectedDate);
     final streak = dataService.getCurrentStreak(userId);
-    final salaryDay = dataService.getPenultimateWorkingDay(_selectedDate);
+    final salaryDay = dataService.getLastWorkingDay(_selectedDate);
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
     final completionRate = workingDaysInMonth == 0
         ? 0.0
@@ -73,11 +76,7 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
       ),
       body: DecoratedBox(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFFF4F8FF), Color(0xFFEAF3FF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
+          gradient: AppTheme.appBackgroundGradient,
         ),
         child: CustomScrollView(
           slivers: [
@@ -106,6 +105,16 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                       },
                     ),
                     const SizedBox(height: 14),
+                    AnimatedReveal(
+                      delay: const Duration(milliseconds: 70),
+                      child: _PerformanceSnapshotCard(
+                        completionRate: completionRate,
+                        monthlyXp: monthlyXp,
+                        streak: streak,
+                        perfectDays: perfectDays,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
@@ -142,7 +151,7 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                           ? 'Oggi e\' il giorno stipendio'
                           : 'Stipendio del mese',
                       subtitle:
-                          'Penultimo lavorativo: ${DateFormat('EEEE d MMMM', 'it').format(salaryDay)}',
+                          'Ultimo lavorativo: ${DateFormat('EEEE d MMMM', 'it').format(salaryDay)}',
                       icon: Icons.account_balance_wallet_outlined,
                       trailing: isSalaryDay ? 'oggi' : 'in arrivo',
                       gradient: AppTheme.sunriseGradient,
@@ -200,36 +209,43 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
-                      child: _EntryCard(
-                        entry: entry,
-                        project: project,
-                        onDelete: () async {
-                          await dataService.deleteTimesheetEntry(entry.id);
-                        },
-                        onEdit: () {
-                          _openEntrySheet(
-                            context: context,
-                            date: _selectedDate,
-                            entry: entry,
-                          );
-                        },
+                      child: AnimatedReveal(
+                        delay: Duration(milliseconds: 70 + (index * 45)),
+                        beginOffset: const Offset(0.08, 0),
+                        child: _EntryCard(
+                          entry: entry,
+                          project: project,
+                          onDelete: () async {
+                            await dataService.deleteTimesheetEntry(entry.id);
+                          },
+                          onEdit: () {
+                            _openEntrySheet(
+                              context: context,
+                              date: _selectedDate,
+                              entry: entry,
+                            );
+                          },
+                          onProjectTap: project == null
+                              ? null
+                              : () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ProjectDetailScreen(
+                                        projectId: project.id,
+                                      ),
+                                    ),
+                                  );
+                                },
+                        ),
                       ),
                     );
                   },
                 ),
               ),
-            const SliverToBoxAdapter(child: SizedBox(height: 72)),
+            SliverToBoxAdapter(child: SizedBox(height: 24 + bottomInset)),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: dailyTotal >= 8.0
-            ? null
-            : () {
-                _openEntrySheet(context: context, date: _selectedDate);
-              },
-        icon: const Icon(Icons.add),
-        label: const Text('Nuova voce'),
       ),
     );
   }
@@ -313,7 +329,7 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                               ),
                               const SizedBox(height: 16),
                               DropdownButtonFormField<Project>(
-                                value: selectedProject,
+                                initialValue: selectedProject,
                                 decoration: const InputDecoration(
                                   labelText: 'Progetto',
                                   prefixIcon: Icon(Icons.folder_open),
@@ -607,7 +623,7 @@ class _HeroCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.25),
+            color: AppTheme.primaryColor.withValues(alpha: 0.25),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -675,7 +691,7 @@ class _HeroCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 10,
-              backgroundColor: Colors.white.withOpacity(0.25),
+              backgroundColor: Colors.white.withValues(alpha: 0.25),
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
             ),
           ),
@@ -690,6 +706,143 @@ class _HeroCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PerformanceSnapshotCard extends StatelessWidget {
+  final double completionRate;
+  final int monthlyXp;
+  final int streak;
+  final int perfectDays;
+
+  const _PerformanceSnapshotCard({
+    required this.completionRate,
+    required this.monthlyXp,
+    required this.streak,
+    required this.perfectDays,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final completion = (completionRate * 100).round();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        gradient: AppTheme.sunriseGradient,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.accentColor.withValues(alpha: 0.28),
+            blurRadius: 16,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Performance del mese',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.auto_awesome, color: Colors.white, size: 14),
+                    SizedBox(width: 5),
+                    Text(
+                      'Live',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$completion%',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 56,
+              fontWeight: FontWeight.w900,
+              height: 0.92,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _SnapshotMetric(label: 'XP', value: '$monthlyXp'),
+              ),
+              Expanded(
+                child: _SnapshotMetric(label: 'Streak', value: '$streak gg'),
+              ),
+              Expanded(
+                child: _SnapshotMetric(
+                  label: 'Perfetti',
+                  value: '$perfectDays',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SnapshotMetric extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _SnapshotMetric({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.8),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -721,7 +874,7 @@ class _MetricCard extends StatelessWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: Colors.white, size: 20),
@@ -798,7 +951,7 @@ class _InfoTile extends StatelessWidget {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: isGradient
-                      ? Colors.white.withOpacity(0.2)
+                      ? Colors.white.withValues(alpha: 0.2)
                       : AppTheme.surfaceMutedColor,
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -913,12 +1066,14 @@ class _EntryCard extends StatelessWidget {
   final Project? project;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
+  final VoidCallback? onProjectTap;
 
   const _EntryCard({
     required this.entry,
     required this.project,
     required this.onDelete,
     required this.onEdit,
+    this.onProjectTap,
   });
 
   @override
@@ -931,7 +1086,7 @@ class _EntryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -941,7 +1096,7 @@ class _EntryCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
-          onTap: onEdit,
+          onTap: onProjectTap ?? onEdit,
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -950,7 +1105,7 @@ class _EntryCard extends StatelessWidget {
                   width: 46,
                   height: 46,
                   decoration: BoxDecoration(
-                    color: projectColor.withOpacity(0.15),
+                    color: projectColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(Icons.folder_open, color: projectColor),
@@ -990,31 +1145,7 @@ class _EntryCard extends StatelessWidget {
                       onEdit();
                     }
                     if (value == 'delete') {
-                      showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Elimina voce?'),
-                          content: const Text(
-                            'Questa consuntivazione verra rimossa definitivamente.',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Annulla'),
-                            ),
-                            ElevatedButton(
-                              onPressed: () {
-                                onDelete();
-                                Navigator.pop(context);
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.errorColor,
-                              ),
-                              child: const Text('Elimina'),
-                            ),
-                          ],
-                        ),
-                      );
+                      _openDeleteSheet(context);
                     }
                   },
                   itemBuilder: (context) => const [
@@ -1030,6 +1161,70 @@ class _EntryCard extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openDeleteSheet(BuildContext context) async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: AppTheme.textLightColor.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text('Elimina voce?', style: AppTheme.heading3),
+              const SizedBox(height: 6),
+              const Text(
+                'Questa consuntivazione verra rimossa definitivamente.',
+                style: AppTheme.bodyMedium,
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(sheetContext).pop(),
+                      child: const Text('Annulla'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        onDelete();
+                        Navigator.of(sheetContext).pop();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.errorColor,
+                      ),
+                      child: const Text('Elimina'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),

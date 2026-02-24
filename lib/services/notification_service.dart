@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 
+import '../utils/work_calendar_utils.dart';
+
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
@@ -56,7 +58,7 @@ class NotificationService {
       }
 
       // Skip Italian holidays (basic list)
-      if (_isItalianHoliday(date)) {
+      if (WorkCalendarUtils.isItalianPublicHoliday(date)) {
         continue;
       }
 
@@ -128,30 +130,6 @@ class NotificationService {
         rethrow;
       }
     }
-  }
-
-  // Check if date is Italian holiday
-  bool _isItalianHoliday(DateTime date) {
-    // Basic Italian holidays
-    final holidays = [
-      DateTime(date.year, 1, 1), // Capodanno
-      DateTime(date.year, 1, 6), // Epifania
-      DateTime(date.year, 4, 25), // Liberazione
-      DateTime(date.year, 5, 1), // Festa del Lavoro
-      DateTime(date.year, 6, 2), // Festa della Repubblica
-      DateTime(date.year, 8, 15), // Ferragosto
-      DateTime(date.year, 11, 1), // Ognissanti
-      DateTime(date.year, 12, 8), // Immacolata
-      DateTime(date.year, 12, 25), // Natale
-      DateTime(date.year, 12, 26), // Santo Stefano
-    ];
-
-    return holidays.any(
-      (holiday) =>
-          holiday.year == date.year &&
-          holiday.month == date.month &&
-          holiday.day == date.day,
-    );
   }
 
   Future<void> cancelAllNotifications() async {

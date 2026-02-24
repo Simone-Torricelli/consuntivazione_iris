@@ -35,28 +35,31 @@ class ProjectDetailScreen extends StatelessWidget {
       endDate: monthEnd,
     )..sort((a, b) => b.date.compareTo(a.date));
 
-    final totalHours = entries.fold<double>(0, (sum, entry) => sum + entry.hours);
+    final totalHours = entries.fold<double>(
+      0,
+      (sum, entry) => sum + entry.hours,
+    );
     final activeDays = entries
         .map((entry) => DateUtils.dateOnly(entry.date))
         .toSet()
         .length;
 
-    final contributors = dataService.getHoursByUserForProject(
-      project.id,
-      startDate: monthStart,
-      endDate: monthEnd,
-    ).entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    final contributors =
+        dataService
+            .getHoursByUserForProject(
+              project.id,
+              startDate: monthStart,
+              endDate: monthEnd,
+            )
+            .entries
+            .toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
 
     return Scaffold(
       appBar: AppBar(title: Text(project.name)),
       body: DecoratedBox(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFFF4F8FF), Color(0xFFEAF3FF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
+          gradient: AppTheme.appBackgroundGradient,
         ),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
@@ -93,7 +96,10 @@ class ProjectDetailScreen extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(project.description, style: AppTheme.bodyMedium),
+                      child: Text(
+                        project.description,
+                        style: AppTheme.bodyMedium,
+                      ),
                     ),
                   ],
                 ),
@@ -109,7 +115,9 @@ class ProjectDetailScreen extends StatelessWidget {
               final idx = indexed.key;
               final contributor = indexed.value;
               final user = dataService.getUserById(contributor.key);
-              final pct = totalHours == 0 ? 0.0 : contributor.value / totalHours;
+              final pct = totalHours == 0
+                  ? 0.0
+                  : contributor.value / totalHours;
 
               if (user == null) {
                 return const SizedBox.shrink();
@@ -144,7 +152,9 @@ class ProjectDetailScreen extends StatelessWidget {
                                 alpha: 0.13,
                               ),
                               child: Text(
-                                (user.name.isNotEmpty ? user.name[0].toUpperCase() : '?'),
+                                (user.name.isNotEmpty
+                                    ? user.name[0].toUpperCase()
+                                    : '?'),
                                 style: const TextStyle(
                                   color: AppTheme.primaryColor,
                                   fontWeight: FontWeight.w800,
@@ -153,7 +163,10 @@ class ProjectDetailScreen extends StatelessWidget {
                             ),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: Text(user.fullName, style: AppTheme.bodyLarge),
+                              child: Text(
+                                user.fullName,
+                                style: AppTheme.bodyLarge,
+                              ),
                             ),
                             Text(
                               '${contributor.value.toStringAsFixed(1)}h',

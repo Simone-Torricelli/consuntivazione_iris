@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "381827995098",
+    "project_id": "irisconsuntivazione",
+    "storage_bucket": "irisconsuntivazione.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:381827995098:android:6ad747c6de5910677b1ce3",
+        "android_client_info": {
+          "package_name": "com.iris.consuntivazione"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD4AY1N9v9W9coCmnN7jBTbY3bXqMzG2Sw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

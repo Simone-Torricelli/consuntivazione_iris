@@ -29,22 +29,6 @@ class PersonDetailScreen extends StatelessWidget {
       );
     }
 
-    if (currentUser != null &&
-        !dataService.canViewUser(viewer: currentUser, target: user)) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Dettaglio Persona')),
-        body: const Center(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Text(
-              'Non hai i permessi per visualizzare questa persona.',
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      );
-    }
-
     final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1);
     final monthEnd = DateTime(now.year, now.month + 1, 0);
@@ -117,6 +101,28 @@ class PersonDetailScreen extends StatelessWidget {
                 ],
               ),
             ),
+            if (currentUser != null &&
+                user.role == UserRole.employee &&
+                (currentUser.role == UserRole.admin ||
+                    currentUser.role == UserRole.manager)) ...[
+              const SizedBox(height: 12),
+              AnimatedReveal(
+                delay: const Duration(milliseconds: 125),
+                child: _TeamLeadEditorCard(
+                  targetUser: user,
+                  currentUser: currentUser,
+                  currentTeamLead: _resolveAssignedTeamLead(
+                    user: user,
+                    dataService: dataService,
+                  ),
+                  onEdit: () => _openTeamLeadEditor(
+                    context: context,
+                    targetUser: user,
+                    currentUser: currentUser,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
             AnimatedReveal(
               delay: const Duration(milliseconds: 150),
@@ -216,6 +222,228 @@ class PersonDetailScreen extends StatelessWidget {
     } catch (_) {
       return AppTheme.primaryColor;
     }
+  }
+
+  User? _resolveAssignedTeamLead({
+    required User user,
+    required DataService dataService,
+  }) {
+    if (user.teamLeadId == null || user.teamLeadId!.trim().isEmpty) {
+      return null;
+    }
+    for (final tl in dataService.getUsersByRole(UserRole.teamLead)) {
+      if (_matchesReference(
+        reference: user.teamLeadId!,
+        candidateId: tl.id,
+        candidateEmail: tl.email,
+      )) {
+        return tl;
+      }
+    }
+    return null;
+  }
+
+  bool _matchesReference({
+    required String reference,
+    required String candidateId,
+    String? candidateEmail,
+  }) {
+    final normalizedRef = reference.trim().toLowerCase();
+    if (normalizedRef == candidateId.trim().toLowerCase()) {
+      return true;
+    }
+    if (candidateEmail != null && candidateEmail.trim().isNotEmpty) {
+      if (normalizedRef == candidateEmail.trim().toLowerCase()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<void> _openTeamLeadEditor({
+    required BuildContext context,
+    required User targetUser,
+    required User currentUser,
+  }) async {
+    final dataService = context.read<DataService>();
+    final formKey = GlobalKey<FormState>();
+    final candidateTeamLeads = currentUser.role == UserRole.manager
+        ? dataService.getTeamLeadsForManager(currentUser.id)
+        : dataService.getUsersByRole(UserRole.teamLead);
+
+    candidateTeamLeads.sort((a, b) => a.fullName.compareTo(b.fullName));
+
+    User? selectedTl = _resolveAssignedTeamLead(
+      user: targetUser,
+      dataService: dataService,
+    );
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final media = MediaQuery.of(context);
+          return AnimatedPadding(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+              child: SafeArea(
+                top: false,
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 42,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: AppTheme.textLightColor.withValues(
+                              alpha: 0.3,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Assegna Team Lead a ${targetUser.fullName}',
+                        style: AppTheme.heading3,
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<User>(
+                        initialValue: selectedTl,
+                        decoration: const InputDecoration(
+                          labelText: 'Team Lead',
+                          prefixIcon: Icon(Icons.groups_outlined),
+                        ),
+                        items: candidateTeamLeads
+                            .map(
+                              (tl) => DropdownMenuItem<User>(
+                                value: tl,
+                                child: Text(tl.fullName),
+                              ),
+                            )
+                            .toList(),
+                        validator: (value) =>
+                            value == null ? 'Seleziona un Team Lead' : null,
+                        onChanged: (value) {
+                          setSheetState(() {
+                            selectedTl = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(sheetContext).pop(),
+                              child: const Text('Annulla'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                if (!formKey.currentState!.validate() ||
+                                    selectedTl == null) {
+                                  return;
+                                }
+
+                                final updated = targetUser.copyWith(
+                                  teamLeadId: selectedTl!.id,
+                                  managerId: selectedTl!.managerId,
+                                );
+                                await dataService.updateUser(updated);
+
+                                if (!sheetContext.mounted) {
+                                  return;
+                                }
+                                Navigator.of(sheetContext).pop();
+                              },
+                              child: const Text('Salva'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TeamLeadEditorCard extends StatelessWidget {
+  final User targetUser;
+  final User currentUser;
+  final User? currentTeamLead;
+  final VoidCallback onEdit;
+
+  const _TeamLeadEditorCard({
+    required this.targetUser,
+    required this.currentUser,
+    required this.currentTeamLead,
+    required this.onEdit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFDCE8F9)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.account_tree_outlined),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Team Lead assegnato', style: AppTheme.bodySmall),
+                Text(
+                  currentTeamLead?.fullName ?? 'Non assegnato',
+                  style: AppTheme.bodyLarge,
+                ),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            label: const Text('Modifica'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

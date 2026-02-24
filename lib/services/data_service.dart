@@ -757,40 +757,8 @@ class DataService extends ChangeNotifier {
   }
 
   bool canViewUser({required User viewer, required User target}) {
-    if (viewer.id == target.id) {
-      return true;
-    }
-
-    switch (viewer.role) {
-      case UserRole.admin:
-        return true;
-      case UserRole.manager:
-        final teamLeads = getTeamLeadsForManager(viewer.id);
-        return (target.role == UserRole.teamLead &&
-                _matchesUserReference(
-                  reference: target.managerId,
-                  userId: viewer.id,
-                  userEmail: viewer.email,
-                )) ||
-            (target.role == UserRole.employee &&
-                target.teamLeadId != null &&
-                teamLeads.any(
-                  (tl) => _matchesUserReference(
-                    reference: target.teamLeadId,
-                    userId: tl.id,
-                    userEmail: tl.email,
-                  ),
-                ));
-      case UserRole.teamLead:
-        return target.role == UserRole.employee &&
-            _matchesUserReference(
-              reference: target.teamLeadId,
-              userId: viewer.id,
-              userEmail: viewer.email,
-            );
-      case UserRole.employee:
-        return false;
-    }
+    // Requirement: every authenticated user can open person details.
+    return viewer.isActive && target.isActive;
   }
 
   bool _matchesUserReference({

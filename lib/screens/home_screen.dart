@@ -1,14 +1,16 @@
-import 'package:flutter/material.dart';
 import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../services/auth_service.dart';
 import '../services/data_service.dart';
 import '../theme/app_theme.dart';
-import '../services/auth_service.dart';
 import 'admin_dashboard_screen.dart';
 import 'calendar_screen.dart';
 import 'profile_screen.dart';
 import 'timesheet_screen.dart';
+import 'web_dashboard_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,6 +21,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+  int _webSelectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -28,15 +31,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final now = DateTime.now();
     final salaryDay = dataService.getLastWorkingDay(now);
     final isSalaryDay = DateUtils.isSameDay(DateUtils.dateOnly(now), salaryDay);
+    final isWideLayout = MediaQuery.sizeOf(context).width >= 1100;
 
-    final screens = <Widget>[
+    final mobileScreens = <Widget>[
       const TimeSheetScreen(),
       const CalendarScreen(),
       if (canViewTeamDashboard) const AdminDashboardScreen(),
       const ProfileScreen(),
     ];
 
-    final navItems = <_DockNavItemData>[
+    final mobileNavItems = <_DockNavItemData>[
       const _DockNavItemData(
         icon: Icons.bolt_rounded,
         activeIcon: Icons.bolt,
@@ -68,8 +72,198 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ];
 
-    final effectiveIndex = _selectedIndex >= screens.length
-        ? screens.length - 1
+    if (isWideLayout) {
+      final teamTabIndex = 3;
+      final profileTabIndex = canViewTeamDashboard ? 4 : 3;
+
+      final webScreens = <Widget>[
+        WebDashboardScreen(
+          onOpenTimesheet: () {
+            setState(() {
+              _webSelectedIndex = 1;
+            });
+          },
+          onOpenCalendar: () {
+            setState(() {
+              _webSelectedIndex = 2;
+            });
+          },
+          onOpenTeam: canViewTeamDashboard
+              ? () {
+                  setState(() {
+                    _webSelectedIndex = teamTabIndex;
+                  });
+                }
+              : null,
+          onOpenProfile: () {
+            setState(() {
+              _webSelectedIndex = profileTabIndex;
+            });
+          },
+        ),
+        const TimeSheetScreen(),
+        const CalendarScreen(),
+        if (canViewTeamDashboard) const AdminDashboardScreen(),
+        const ProfileScreen(),
+      ];
+
+      final webNavItems = <_WebNavItemData>[
+        const _WebNavItemData(
+          icon: Icons.grid_view_rounded,
+          activeIcon: Icons.grid_view,
+          label: 'Dashboard',
+          gradient: LinearGradient(
+            colors: [Color(0xFF1757FF), Color(0xFF07C5C9)],
+          ),
+        ),
+        const _WebNavItemData(
+          icon: Icons.bolt_outlined,
+          activeIcon: Icons.bolt,
+          label: 'Consuntivi',
+          gradient: LinearGradient(
+            colors: [Color(0xFF00A6FB), Color(0xFF05D5E8)],
+          ),
+        ),
+        const _WebNavItemData(
+          icon: Icons.calendar_month_outlined,
+          activeIcon: Icons.calendar_month,
+          label: 'Calendario',
+          gradient: LinearGradient(
+            colors: [Color(0xFF42A5F5), Color(0xFF26C6DA)],
+          ),
+        ),
+        if (canViewTeamDashboard)
+          const _WebNavItemData(
+            icon: Icons.insights_outlined,
+            activeIcon: Icons.insights,
+            label: 'Team',
+            gradient: LinearGradient(
+              colors: [Color(0xFFFF7A18), Color(0xFFFFB703)],
+            ),
+          ),
+        const _WebNavItemData(
+          icon: Icons.person_outline,
+          activeIcon: Icons.person,
+          label: 'Profilo',
+          gradient: LinearGradient(
+            colors: [Color(0xFF7B61FF), Color(0xFFB06CFF)],
+          ),
+        ),
+      ];
+
+      final effectiveWebIndex = _webSelectedIndex >= webScreens.length
+          ? webScreens.length - 1
+          : _webSelectedIndex;
+      if (effectiveWebIndex != _webSelectedIndex) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _webSelectedIndex = effectiveWebIndex;
+          });
+        });
+      }
+
+      return Scaffold(
+        body: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: AppTheme.appBackgroundGradient,
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+              child: Row(
+                children: [
+                  _WebSidebarNav(
+                    items: webNavItems,
+                    selectedIndex: effectiveWebIndex,
+                    onTap: (index) {
+                      setState(() {
+                        _webSelectedIndex = index;
+                      });
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(26),
+                        border: Border.all(color: const Color(0xFFDCE8F9)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.08),
+                            blurRadius: 16,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(26),
+                        child: Stack(
+                          children: [
+                            StreamBuilder<int>(
+                              stream: dataService.realtimeTickStream,
+                              initialData: dataService.realtimeTick,
+                              builder: (context, _) {
+                                return AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 420),
+                                  switchInCurve: Curves.easeOutCubic,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  transitionBuilder: (child, animation) {
+                                    final slide = Tween<Offset>(
+                                      begin: const Offset(0.04, 0),
+                                      end: Offset.zero,
+                                    ).animate(animation);
+                                    return FadeTransition(
+                                      opacity: animation,
+                                      child: SlideTransition(
+                                        position: slide,
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  child: KeyedSubtree(
+                                    key: ValueKey<int>(effectiveWebIndex),
+                                    child: webScreens[effectiveWebIndex],
+                                  ),
+                                );
+                              },
+                            ),
+                            if (isSalaryDay)
+                              Align(
+                                alignment: Alignment.topCenter,
+                                child: SafeArea(
+                                  minimum: const EdgeInsets.fromLTRB(
+                                    14,
+                                    10,
+                                    14,
+                                    0,
+                                  ),
+                                  child: _SalaryCelebrationBanner(
+                                    onOpenCalendar: () {
+                                      setState(() {
+                                        _webSelectedIndex = 2;
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final effectiveIndex = _selectedIndex >= mobileScreens.length
+        ? mobileScreens.length - 1
         : _selectedIndex;
     if (effectiveIndex != _selectedIndex) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -88,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
           StreamBuilder<int>(
             stream: dataService.realtimeTickStream,
             initialData: dataService.realtimeTick,
-            builder: (context, snapshot) {
+            builder: (context, _) {
               return RefreshIndicator(
                 onRefresh: () async {
                   final auth = context.read<AuthService>();
@@ -112,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                   child: KeyedSubtree(
                     key: ValueKey<int>(effectiveIndex),
-                    child: screens[effectiveIndex],
+                    child: mobileScreens[effectiveIndex],
                   ),
                 ),
               );
@@ -135,7 +329,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       bottomNavigationBar: _AnimatedDockBar(
-        items: navItems,
+        items: mobileNavItems,
         selectedIndex: effectiveIndex,
         onTap: (index) {
           setState(() {
@@ -418,6 +612,91 @@ class _AnimatedDockBar extends StatelessWidget {
   }
 }
 
+class _WebSidebarNav extends StatelessWidget {
+  final List<_WebNavItemData> items;
+  final int selectedIndex;
+  final ValueChanged<int> onTap;
+
+  const _WebSidebarNav({
+    required this.items,
+    required this.selectedIndex,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 92,
+      decoration: BoxDecoration(
+        color: const Color(0xFF101216),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 14),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFF7A18), Color(0xFFFFB703)],
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.query_stats_rounded, color: Colors.white),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: List.generate(items.length, (index) {
+                  final item = items[index];
+                  final isSelected = index == selectedIndex;
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 9),
+                    child: Tooltip(
+                      message: item.label,
+                      child: GestureDetector(
+                        onTap: () => onTap(index),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          width: isSelected ? 64 : 52,
+                          height: isSelected ? 64 : 52,
+                          decoration: BoxDecoration(
+                            gradient: isSelected ? item.gradient : null,
+                            color: isSelected ? null : Colors.transparent,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Colors.white.withValues(alpha: 0.28)
+                                  : Colors.white.withValues(alpha: 0.08),
+                            ),
+                          ),
+                          child: Icon(
+                            isSelected ? item.activeIcon : item.icon,
+                            color: isSelected
+                                ? Colors.white
+                                : Colors.white.withValues(alpha: 0.76),
+                            size: isSelected ? 26 : 23,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
 class _DockNavItemData {
   final IconData icon;
   final IconData activeIcon;
@@ -426,6 +705,20 @@ class _DockNavItemData {
   const _DockNavItemData({
     required this.icon,
     required this.activeIcon,
+    required this.gradient,
+  });
+}
+
+class _WebNavItemData {
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  final Gradient gradient;
+
+  const _WebNavItemData({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
     required this.gradient,
   });
 }

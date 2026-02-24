@@ -31,6 +31,36 @@ service cloud.firestore {
       return userRole() == 'teamLead';
     }
 
+    function managerOwnsTeamLead(teamLeadId) {
+      return teamLeadId is string &&
+          teamLeadId.size() > 0 &&
+          exists(/databases/$(database)/documents/users/$(teamLeadId)) &&
+          get(/databases/$(database)/documents/users/$(teamLeadId)).data.role ==
+              'teamLead' &&
+          get(/databases/$(database)/documents/users/$(teamLeadId)).data
+                  .managerId ==
+              request.auth.uid;
+    }
+
+    function managerCanUpdateEmployeeAssignment() {
+      return isManager() &&
+          resource.data.role == 'employee' &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.id == resource.data.id &&
+          request.resource.data.email == resource.data.email &&
+          request.resource.data.name == resource.data.name &&
+          request.resource.data.surname == resource.data.surname &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.isActive == resource.data.isActive &&
+          request.resource.data.teamLeadId is string &&
+          request.resource.data.managerId == request.auth.uid &&
+          managerOwnsTeamLead(request.resource.data.teamLeadId) &&
+          request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly(['teamLeadId', 'managerId', 'updatedAt']);
+    }
+
     function canManageProjects() {
       return isAdmin() || isManager() || isTeamLead();
     }
@@ -50,7 +80,9 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if signedIn() &&
           (isAdmin() || canSelfProvisionUserProfile(userId));
-      allow update, delete: if signedIn() && isAdmin();
+      allow update: if signedIn() &&
+          (isAdmin() || managerCanUpdateEmployeeAssignment());
+      allow delete: if signedIn() && isAdmin();
     }
 
     match /projects/{projectId} {

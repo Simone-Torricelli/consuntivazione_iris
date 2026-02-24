@@ -117,10 +117,19 @@ class AuthService extends ChangeNotifier {
           users = await _loadUsersFromPrefs(prefs);
         }
 
-        final user = users.firstWhere(
-          (u) => u.email.toLowerCase() == normalizedEmail && u.isActive,
-          orElse: () => throw Exception('User not found'),
-        );
+        final matchingUsers = users
+            .where(
+              (u) => u.email.toLowerCase() == normalizedEmail && u.isActive,
+            )
+            .toList();
+        if (matchingUsers.isEmpty) {
+          _lastError =
+              'Utente non trovato in locale. Se sei su web, configura Firebase o registrati da questa app.';
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+        final user = matchingUsers.first;
 
         _currentUser = user;
         await prefs.setString(_currentUserKey, json.encode(user.toJson()));

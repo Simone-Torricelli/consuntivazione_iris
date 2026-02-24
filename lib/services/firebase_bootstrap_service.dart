@@ -19,9 +19,16 @@ class FirebaseBootstrapService {
 
     final options = DefaultFirebaseOptions.currentPlatform;
     if (!DefaultFirebaseOptions.isConfigured || options == null) {
-      debugPrint(
-        'Firebase disabilitato: piattaforma corrente non configurata in lib/firebase/firebase_options.dart',
-      );
+      if (kIsWeb) {
+        debugPrint(
+          'Firebase disabilitato su WEB: configura web con `flutterfire configure --platforms=web` '
+          'oppure passa i dart-define FIREBASE_WEB_* in run/build.',
+        );
+      } else {
+        debugPrint(
+          'Firebase disabilitato: piattaforma corrente non configurata in lib/firebase/firebase_options.dart',
+        );
+      }
       return;
     }
 

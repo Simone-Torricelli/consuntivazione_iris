@@ -15,10 +15,10 @@ class ResponsiveAppFrame extends StatelessWidget {
         }
 
         final maxContentWidth = width >= 1500
-            ? 1220.0
+            ? 1440.0
             : width >= 1100
-            ? 1000.0
-            : 860.0;
+            ? 1240.0
+            : 980.0;
 
         return ColoredBox(
           color: const Color(0xFFEFF3F8),

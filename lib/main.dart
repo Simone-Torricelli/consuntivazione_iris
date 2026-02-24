@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -19,17 +20,21 @@ void main() async {
   // Initialize date formatting for Italian
   await initializeDateFormatting('it', null);
 
-  // Initialize notification service
-  await NotificationService().initialize();
+  // Initialize notification service only on mobile targets.
+  if (!kIsWeb) {
+    await NotificationService().initialize();
+  }
 
   // Initialize Firebase (safe fallback to local mode if not configured)
   await FirebaseBootstrapService.instance.initialize();
 
-  // Set preferred orientations
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // Set preferred orientations only on mobile targets.
+  if (!kIsWeb) {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  }
 
   runApp(const MainApp());
 }
@@ -92,7 +97,7 @@ class _SplashScreenState extends State<SplashScreen> {
     await dataService.initialize();
 
     // Schedule notifications if user is logged in
-    if (authService.isLoggedIn) {
+    if (!kIsWeb && authService.isLoggedIn) {
       try {
         await NotificationService().scheduleDailyReminder();
       } catch (_) {

@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function canManageProjects() {
+      return userRole() in ['admin', 'manager', 'teamLead'];
+    }
+
+    function canManageUsers() {
+      return userRole() == 'admin';
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn() && canManageUsers();
+    }
+
+    match /projects/{projectId} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn() && canManageProjects();
+    }
+
+    match /timesheet_entries/{entryId} {
+      allow read: if signedIn();
+
+      // Dev can write only own entries. Admin/Manager/TL can write all entries.
+      allow create, update, delete: if signedIn() && (
+        request.resource.data.userId == request.auth.uid ||
+        userRole() in ['admin', 'manager', 'teamLead']
+      );
+    }
+  }
+}

@@ -1,0 +1,57 @@
+name: consuntivazione_iris
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  
+  # State Management
+  provider: ^6.1.1
+  
+  # Local Storage
+  shared_preferences: ^2.2.2
+  
+  # Date & Time
+  intl: ^0.20.2
+  table_calendar: ^3.0.9
+  
+  # Icons
+  flutter_svg: ^2.0.9
+  
+  # Notifications
+  flutter_local_notifications: ^17.0.0
+  timezone: ^0.9.2
+  
+  # UI Components
+  fl_chart: ^0.66.0
+  shimmer: ^3.0.0
+  google_fonts: ^6.2.1
+  
+  # JSON
+  json_annotation: ^4.8.1
+  
+  # Firebase
+  firebase_core: ^3.9.0
+  firebase_auth: ^5.4.0
+  cloud_firestore: ^5.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.8
+  json_serializable: ^6.7.1
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/

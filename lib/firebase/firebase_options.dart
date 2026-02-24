@@ -6,7 +6,9 @@ import '../firebase_options.dart' as generated_options;
 
 class DefaultFirebaseOptions {
   static bool get isConfigured =>
-      _optionsFromDartDefines() != null || _generatedCurrentPlatform() != null;
+      _optionsFromDartDefines() != null ||
+      _generatedCurrentPlatform() != null ||
+      kIsWeb;
 
   static FirebaseOptions? get currentPlatform {
     final fromDefines = _optionsFromDartDefines();
@@ -17,6 +19,10 @@ class DefaultFirebaseOptions {
     final generated = _generatedCurrentPlatform();
     if (generated != null) {
       return generated;
+    }
+
+    if (kIsWeb) {
+      return _webDefault;
     }
 
     return null;
@@ -83,6 +89,16 @@ class DefaultFirebaseOptions {
       measurementId: _webMeasurementId,
     );
   }
+
+  static const FirebaseOptions _webDefault = FirebaseOptions(
+    apiKey: 'AIzaSyDdNS_7K42GbVqpdzmfJcfu-gtiED8Alzo',
+    appId: '1:381827995098:web:0a53902a0decf09c7b1ce3',
+    messagingSenderId: '381827995098',
+    projectId: 'irisconsuntivazione',
+    authDomain: 'irisconsuntivazione.firebaseapp.com',
+    storageBucket: 'irisconsuntivazione.firebasestorage.app',
+    measurementId: 'G-J841J6SJFY',
+  );
 
   static const String _androidApiKey = String.fromEnvironment(
     'FIREBASE_ANDROID_API_KEY',

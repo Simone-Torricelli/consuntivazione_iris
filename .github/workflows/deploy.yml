@@ -2,7 +2,7 @@ name: Deploy Flutter Web to GitHub Pages
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "master"]
   workflow_dispatch:
 
 permissions:
@@ -21,12 +21,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Locate Flutter project
+        id: locate
+        shell: bash
+        run: |
+          FLUTTER_DIR=$(dirname "$(find . -maxdepth 4 -name pubspec.yaml | head -n1)")
+          if [[ -z "$FLUTTER_DIR" ]]; then
+            echo "Nessun pubspec.yaml trovato nel repository."
+            exit 1
+          fi
+          # Normalizza "./" -> "."
+          if [[ "$FLUTTER_DIR" == "./" ]]; then
+            FLUTTER_DIR="."
+          fi
+          echo "flutter_dir=$FLUTTER_DIR" >> "$GITHUB_OUTPUT"
+          echo "Flutter project directory: $FLUTTER_DIR"
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
 
       - name: Flutter pub get
+        working-directory: ${{ steps.locate.outputs.flutter_dir }}
         run: flutter pub get
 
       - name: Compute base href
@@ -41,6 +58,7 @@ jobs:
           fi
 
       - name: Build web
+        working-directory: ${{ steps.locate.outputs.flutter_dir }}
         run: flutter build web --release --base-href "${{ steps.base.outputs.base_href }}"
 
       - name: Setup Pages
@@ -49,7 +67,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build/web
+          path: ${{ steps.locate.outputs.flutter_dir }}/build/web
 
   deploy:
     environment:

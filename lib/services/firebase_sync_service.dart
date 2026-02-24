@@ -48,6 +48,57 @@ class FirebaseSyncService {
     }
   }
 
+  Future<User?> fetchUserById(String userId) async {
+    final db = _safeFirestore();
+    if (db == null) {
+      return null;
+    }
+
+    try {
+      final doc = await _usersRef(db)!.doc(userId).get();
+      if (!doc.exists || doc.data() == null) {
+        return null;
+      }
+      return User.fromJson(Map<String, dynamic>.from(doc.data()!));
+    } catch (e) {
+      debugPrint('Errore fetchUserById Firebase: $e');
+      return null;
+    }
+  }
+
+  Future<User?> fetchUserByEmail(String email) async {
+    final db = _safeFirestore();
+    if (db == null) {
+      return null;
+    }
+
+    try {
+      final normalized = email.trim().toLowerCase();
+
+      final normalizedSnapshot = await _usersRef(
+        db,
+      )!.where('email', isEqualTo: normalized).limit(1).get();
+      if (normalizedSnapshot.docs.isNotEmpty) {
+        return User.fromJson(
+          Map<String, dynamic>.from(normalizedSnapshot.docs.first.data()),
+        );
+      }
+
+      final rawSnapshot = await _usersRef(
+        db,
+      )!.where('email', isEqualTo: email.trim()).limit(1).get();
+      if (rawSnapshot.docs.isEmpty) {
+        return null;
+      }
+      return User.fromJson(
+        Map<String, dynamic>.from(rawSnapshot.docs.first.data()),
+      );
+    } catch (e) {
+      debugPrint('Errore fetchUserByEmail Firebase: $e');
+      return null;
+    }
+  }
+
   Future<List<Project>> fetchProjects() async {
     final db = _safeFirestore();
     if (db == null) {

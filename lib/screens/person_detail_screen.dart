@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../models/user_model.dart';
 import '../models/timesheet_entry.dart';
+import '../services/auth_service.dart';
 import '../services/data_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
@@ -17,12 +18,30 @@ class PersonDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dataService = context.watch<DataService>();
+    final authService = context.watch<AuthService>();
+    final currentUser = authService.currentUser;
     final user = dataService.getUserById(userId);
 
     if (user == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Dettaglio Persona')),
         body: const Center(child: Text('Utente non trovato.')),
+      );
+    }
+
+    if (currentUser != null &&
+        !dataService.canViewUser(viewer: currentUser, target: user)) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Dettaglio Persona')),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Non hai i permessi per visualizzare questa persona.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
       );
     }
 

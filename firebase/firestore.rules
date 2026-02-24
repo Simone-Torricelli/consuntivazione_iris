@@ -5,35 +5,96 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function currentUserDocPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function hasUserProfile() {
+      return signedIn() && exists(currentUserDocPath());
+    }
+
     function userRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return hasUserProfile()
+          ? get(currentUserDocPath()).data.role
+          : null;
+    }
+
+    function isAdmin() {
+      return userRole() == 'admin';
+    }
+
+    function isManager() {
+      return userRole() == 'manager';
+    }
+
+    function isTeamLead() {
+      return userRole() == 'teamLead';
     }
 
     function canManageProjects() {
-      return userRole() in ['admin', 'manager', 'teamLead'];
+      return isAdmin() || isManager() || isTeamLead();
     }
 
-    function canManageUsers() {
-      return userRole() == 'admin';
+    function canManageTimesheets() {
+      return isAdmin() || isManager() || isTeamLead();
+    }
+
+    function canSelfProvisionUserProfile(userId) {
+      return signedIn() &&
+          request.auth.uid == userId &&
+          request.resource.data.id == request.auth.uid &&
+          request.resource.data.role == 'employee';
     }
 
     match /users/{userId} {
       allow read: if signedIn();
-      allow create, update, delete: if signedIn() && canManageUsers();
+      allow create: if signedIn() &&
+          (isAdmin() || canSelfProvisionUserProfile(userId));
+      allow update, delete: if signedIn() && isAdmin();
     }
 
     match /projects/{projectId} {
       allow read: if signedIn();
-      allow create, update, delete: if signedIn() && canManageProjects();
+
+      allow create: if signedIn() && (
+          isAdmin() ||
+          isManager() ||
+          (isTeamLead() && request.resource.data.ownerUserId == request.auth.uid)
+      );
+
+      allow update: if signedIn() && (
+          isAdmin() ||
+          isManager() ||
+          (isTeamLead() &&
+              resource.data.ownerUserId == request.auth.uid &&
+              request.resource.data.ownerUserId == request.auth.uid)
+      );
+
+      allow delete: if signedIn() && (
+          isAdmin() ||
+          isManager() ||
+          (isTeamLead() && resource.data.ownerUserId == request.auth.uid)
+      );
     }
 
     match /timesheet_entries/{entryId} {
       allow read: if signedIn();
 
       // Dev can write only own entries. Admin/Manager/TL can write all entries.
-      allow create, update, delete: if signedIn() && (
-        request.resource.data.userId == request.auth.uid ||
-        userRole() in ['admin', 'manager', 'teamLead']
+      allow create: if signedIn() && (
+          request.resource.data.userId == request.auth.uid ||
+          canManageTimesheets()
+      );
+
+      allow update: if signedIn() && (
+          ((resource.data.userId == request.auth.uid) &&
+              (request.resource.data.userId == request.auth.uid)) ||
+          canManageTimesheets()
+      );
+
+      allow delete: if signedIn() && (
+          resource.data.userId == request.auth.uid ||
+          canManageTimesheets()
       );
     }
   }

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../models/timesheet_entry.dart';
+import '../services/auth_service.dart';
 import '../services/data_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
@@ -17,12 +18,30 @@ class ProjectDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dataService = context.watch<DataService>();
+    final authService = context.watch<AuthService>();
+    final currentUser = authService.currentUser;
     final project = dataService.getProjectById(projectId);
 
     if (project == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Dettaglio Progetto')),
         body: const Center(child: Text('Progetto non trovato.')),
+      );
+    }
+
+    if (currentUser != null &&
+        !dataService.canAccessProject(viewer: currentUser, project: project)) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Dettaglio Progetto')),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Non hai i permessi per visualizzare questo progetto.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
       );
     }
 

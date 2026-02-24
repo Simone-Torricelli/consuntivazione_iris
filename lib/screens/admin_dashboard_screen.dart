@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../models/user_model.dart';
+import '../services/auth_service.dart';
 import '../services/data_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
@@ -12,17 +13,28 @@ import 'manage_projects_screen.dart';
 import 'manage_users_screen.dart';
 import 'person_detail_screen.dart';
 import 'project_detail_screen.dart';
+import 'team_overview_screen.dart';
 
 class AdminDashboardScreen extends StatelessWidget {
   const AdminDashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final authService = context.watch<AuthService>();
     final dataService = context.watch<DataService>();
-    final users = dataService.users
-        .where((u) => u.role == UserRole.employee)
-        .toList();
-    final projects = dataService.projects.where((p) => p.isActive).toList();
+    final currentUser = authService.currentUser;
+    if (currentUser == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final users = switch (currentUser.role) {
+      UserRole.admin => dataService.getUsersByRole(UserRole.employee),
+      UserRole.manager => dataService.getDevelopersForManager(currentUser.id),
+      UserRole.teamLead => dataService.getDevelopersForTeamLead(currentUser.id),
+      UserRole.employee => <User>[],
+    };
+    final teamMembers = dataService.getTeamMembersForUser(currentUser);
+    final projects = dataService.getProjectsVisibleForUser(currentUser);
 
     final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1);
@@ -75,8 +87,15 @@ class AdminDashboardScreen extends StatelessWidget {
         .length;
     final topContributor = userStats.isEmpty ? null : userStats.first;
 
+    final title = switch (currentUser.role) {
+      UserRole.admin => 'Console Admin',
+      UserRole.manager => 'Dashboard Manager',
+      UserRole.teamLead => 'Dashboard Team Lead',
+      UserRole.employee => 'Dashboard',
+    };
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard TL/Manager')),
+      appBar: AppBar(title: Text(title)),
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: AppTheme.appBackgroundGradient,
@@ -108,14 +127,16 @@ class AdminDashboardScreen extends StatelessWidget {
                   children: [
                     StatCard(
                       title: 'Membri Team',
-                      value: users.length.toString(),
+                      value: teamMembers.length.toString(),
                       icon: Icons.people_alt_outlined,
                       color: AppTheme.primaryColor,
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const ManageUsersScreen(),
+                            builder: (_) => authService.isAdmin
+                                ? const ManageUsersScreen()
+                                : const TeamOverviewScreen(),
                           ),
                         );
                       },
@@ -326,21 +347,23 @@ class AdminDashboardScreen extends StatelessWidget {
               const SizedBox(height: 20),
               const Text('Azioni rapide', style: AppTheme.heading3),
               const SizedBox(height: 10),
-              _QuickActionCard(
-                title: 'Gestisci Utenti',
-                subtitle: 'Assegna ruoli e abilita/disabilita account',
-                icon: Icons.people,
-                color: AppTheme.primaryColor,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ManageUsersScreen(),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 10),
+              if (authService.isAdmin) ...[
+                _QuickActionCard(
+                  title: 'Console utenti',
+                  subtitle: 'Assegna ruoli, TL e membri team',
+                  icon: Icons.admin_panel_settings_outlined,
+                  color: AppTheme.primaryColor,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ManageUsersScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
+              ],
               _QuickActionCard(
                 title: 'Gestisci Progetti',
                 subtitle: 'Aggiorna backlog progetti e assegnazioni',
@@ -355,6 +378,24 @@ class AdminDashboardScreen extends StatelessWidget {
                   );
                 },
               ),
+              if (currentUser.role == UserRole.manager ||
+                  currentUser.role == UserRole.teamLead) ...[
+                const SizedBox(height: 10),
+                _QuickActionCard(
+                  title: 'Il mio team',
+                  subtitle: 'Vedi struttura e persone assegnate',
+                  icon: Icons.groups_outlined,
+                  color: AppTheme.successColor,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const TeamOverviewScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ],
               if (projects.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 Row(

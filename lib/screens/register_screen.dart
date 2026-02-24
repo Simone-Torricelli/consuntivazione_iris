@@ -58,9 +58,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
       Navigator.of(context).pop();
     } else {
+      final errorMessage =
+          authService.lastError ?? 'Errore durante la registrazione';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Errore durante la registrazione'),
+        SnackBar(
+          content: Text(errorMessage),
           backgroundColor: AppTheme.errorColor,
         ),
       );

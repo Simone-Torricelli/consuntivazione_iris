@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/user_model.dart';
+import '../services/auth_service.dart';
 import '../services/data_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
@@ -17,14 +18,17 @@ class ManageUsersScreen extends StatefulWidget {
 class _ManageUsersScreenState extends State<ManageUsersScreen> {
   String _searchQuery = '';
 
-  Future<void> _openUserSheet() async {
+  Future<void> _openUserSheet({User? user}) async {
+    final dataService = context.read<DataService>();
     final formKey = GlobalKey<FormState>();
-    final nameController = TextEditingController();
-    final surnameController = TextEditingController();
-    final emailController = TextEditingController();
+    final nameController = TextEditingController(text: user?.name ?? '');
+    final surnameController = TextEditingController(text: user?.surname ?? '');
+    final emailController = TextEditingController(text: user?.email ?? '');
 
-    UserRole selectedRole = UserRole.employee;
-    DeveloperType? selectedType;
+    UserRole selectedRole = user?.role ?? UserRole.employee;
+    DeveloperType? selectedType = user?.developerType;
+    String? selectedManagerId = user?.managerId;
+    String? selectedTeamLeadId = user?.teamLeadId;
 
     await showModalBottomSheet(
       context: context,
@@ -33,6 +37,8 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setSheetState) {
           final media = MediaQuery.of(context);
+          final managers = dataService.getUsersByRole(UserRole.manager);
+          final teamLeads = dataService.getUsersByRole(UserRole.teamLead);
 
           return AnimatedPadding(
             duration: const Duration(milliseconds: 220),
@@ -66,12 +72,14 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Nuova persona',
+                                user == null
+                                    ? 'Nuova persona'
+                                    : 'Modifica persona',
                                 style: AppTheme.heading2.copyWith(fontSize: 26),
                               ),
                               const SizedBox(height: 6),
                               const Text(
-                                'Crea un nuovo utente e assegna ruolo/team.',
+                                'Gestisci ruolo e gerarchia team (Manager → TL → Developer).',
                                 style: AppTheme.bodyMedium,
                               ),
                               const SizedBox(height: 16),
@@ -146,9 +154,82 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                                   if (value == null) return;
                                   setSheetState(() {
                                     selectedRole = value;
+                                    if (value == UserRole.manager ||
+                                        value == UserRole.admin) {
+                                      selectedManagerId = null;
+                                      selectedTeamLeadId = null;
+                                    } else if (value == UserRole.teamLead) {
+                                      selectedTeamLeadId = null;
+                                    } else if (value == UserRole.employee) {
+                                      selectedManagerId = null;
+                                    }
                                   });
                                 },
                               ),
+                              if (selectedRole == UserRole.teamLead) ...[
+                                const SizedBox(height: 12),
+                                DropdownButtonFormField<String?>(
+                                  initialValue: selectedManagerId,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Manager di riferimento',
+                                    prefixIcon: Icon(
+                                      Icons.account_tree_outlined,
+                                    ),
+                                  ),
+                                  items: [
+                                    const DropdownMenuItem<String?>(
+                                      value: null,
+                                      child: Text('Nessuno'),
+                                    ),
+                                    ...managers.map(
+                                      (m) => DropdownMenuItem<String?>(
+                                        value: m.id,
+                                        child: Text(m.fullName),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    setSheetState(() {
+                                      selectedManagerId = value;
+                                    });
+                                  },
+                                ),
+                              ],
+                              if (selectedRole == UserRole.employee) ...[
+                                const SizedBox(height: 12),
+                                DropdownButtonFormField<String?>(
+                                  initialValue: selectedTeamLeadId,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Team Lead di riferimento',
+                                    prefixIcon: Icon(Icons.groups_outlined),
+                                  ),
+                                  items: [
+                                    const DropdownMenuItem<String?>(
+                                      value: null,
+                                      child: Text('Nessuno'),
+                                    ),
+                                    ...teamLeads.map(
+                                      (tl) => DropdownMenuItem<String?>(
+                                        value: tl.id,
+                                        child: Text(tl.fullName),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    setSheetState(() {
+                                      selectedTeamLeadId = value;
+                                      User? selectedTl;
+                                      for (final tl in teamLeads) {
+                                        if (tl.id == value) {
+                                          selectedTl = tl;
+                                          break;
+                                        }
+                                      }
+                                      selectedManagerId = selectedTl?.managerId;
+                                    });
+                                  },
+                                ),
+                              ],
                               const SizedBox(height: 12),
                               DropdownButtonFormField<DeveloperType>(
                                 initialValue: selectedType,
@@ -202,23 +283,57 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                                   return;
                                 }
 
-                                final user = User(
-                                  id: 'user_${DateTime.now().millisecondsSinceEpoch}',
-                                  email: emailController.text.trim(),
-                                  name: nameController.text.trim(),
-                                  surname: surnameController.text.trim(),
-                                  role: selectedRole,
-                                  developerType: selectedType,
-                                  createdAt: DateTime.now(),
-                                );
+                                if (user == null) {
+                                  final newUser = User(
+                                    id: 'user_${DateTime.now().millisecondsSinceEpoch}',
+                                    email: emailController.text
+                                        .trim()
+                                        .toLowerCase(),
+                                    name: nameController.text.trim(),
+                                    surname: surnameController.text.trim(),
+                                    role: selectedRole,
+                                    developerType: selectedType,
+                                    managerId: selectedRole == UserRole.teamLead
+                                        ? selectedManagerId
+                                        : null,
+                                    teamLeadId:
+                                        selectedRole == UserRole.employee
+                                        ? selectedTeamLeadId
+                                        : null,
+                                    createdAt: DateTime.now(),
+                                  );
 
-                                await context.read<DataService>().addUser(user);
+                                  await context.read<DataService>().addUser(
+                                    newUser,
+                                  );
+                                } else {
+                                  final updated = user.copyWith(
+                                    email: emailController.text
+                                        .trim()
+                                        .toLowerCase(),
+                                    name: nameController.text.trim(),
+                                    surname: surnameController.text.trim(),
+                                    role: selectedRole,
+                                    developerType: selectedType,
+                                    managerId: selectedRole == UserRole.teamLead
+                                        ? selectedManagerId
+                                        : null,
+                                    teamLeadId:
+                                        selectedRole == UserRole.employee
+                                        ? selectedTeamLeadId
+                                        : null,
+                                  );
+                                  await context.read<DataService>().updateUser(
+                                    updated,
+                                  );
+                                }
+
                                 if (sheetContext.mounted) {
                                   Navigator.of(sheetContext).pop();
                                 }
                               },
                               icon: const Icon(Icons.check_circle_outline),
-                              label: const Text('Crea'),
+                              label: Text(user == null ? 'Crea' : 'Salva'),
                             ),
                           ),
                         ],
@@ -307,7 +422,24 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final authService = context.watch<AuthService>();
     final dataService = context.watch<DataService>();
+
+    if (!authService.isAdmin) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('People Studio')),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Accesso consentito solo agli Admin.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
     final users = dataService.users
         .where((u) => u.role != UserRole.admin)
         .toList();
@@ -368,6 +500,22 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                 ),
               ),
             ),
+            if (authService.isFirebaseMode)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    'Con FirebaseAuth attivo, i nuovi utenti si registrano dall’app. Qui puoi assegnare ruoli e gerarchie.',
+                    style: AppTheme.bodySmall,
+                  ),
+                ),
+              ),
             Expanded(
               child: users.isEmpty
                   ? const _UsersEmptyState()
@@ -414,16 +562,29 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                               ),
                               title: Text(user.fullName),
                               subtitle: Text(
-                                '${user.role.displayName}${user.developerType != null ? ' • ${user.developerType!.displayName}' : ''}\n${user.email}',
+                                '${user.role.displayName}${user.developerType != null ? ' • ${user.developerType!.displayName}' : ''}\n${_relationshipLabel(user, dataService)}\n${user.email}',
                               ),
                               isThreeLine: true,
                               trailing: PopupMenuButton<String>(
                                 onSelected: (value) {
+                                  if (value == 'edit') {
+                                    _openUserSheet(user: user);
+                                  }
                                   if (value == 'delete') {
                                     _openDeleteUserSheet(user);
                                   }
                                 },
                                 itemBuilder: (context) => const [
+                                  PopupMenuItem<String>(
+                                    value: 'edit',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.edit_outlined),
+                                        SizedBox(width: 8),
+                                        Text('Modifica'),
+                                      ],
+                                    ),
+                                  ),
                                   PopupMenuItem<String>(
                                     value: 'delete',
                                     child: Row(
@@ -448,12 +609,41 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openUserSheet,
-        icon: const Icon(Icons.add),
-        label: const Text('Aggiungi Utente'),
-      ),
+      floatingActionButton: authService.isFirebaseMode
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => _openUserSheet(),
+              icon: const Icon(Icons.add),
+              label: const Text('Aggiungi Utente'),
+            ),
     );
+  }
+
+  String _relationshipLabel(User user, DataService dataService) {
+    if (user.role == UserRole.teamLead) {
+      final managerName = user.managerId == null
+          ? 'Manager: non assegnato'
+          : 'Manager: ${dataService.getUserById(user.managerId!)?.fullName ?? 'non trovato'}';
+      return managerName;
+    }
+
+    if (user.role == UserRole.employee) {
+      final tl = user.teamLeadId == null
+          ? null
+          : dataService.getUserById(user.teamLeadId!);
+      if (tl == null) {
+        return 'TL: non assegnato';
+      }
+      final manager = tl.managerId == null
+          ? null
+          : dataService.getUserById(tl.managerId!);
+      if (manager == null) {
+        return 'TL: ${tl.fullName}';
+      }
+      return 'TL: ${tl.fullName} • Manager: ${manager.fullName}';
+    }
+
+    return 'Ruolo amministrativo';
   }
 }
 

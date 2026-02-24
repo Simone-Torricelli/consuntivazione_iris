@@ -81,7 +81,9 @@ flutter build ios --release
 
 ## 👤 Credenziali Demo
 
-Per testare l'applicazione usa:
+Con FirebaseAuth attivo, usa account reali registrati nell'app o creati in Firebase Console.
+
+Per ambienti locali senza Firebase resta disponibile il profilo demo:
 
 **Admin:**
 - Email: `admin@iris.com`
@@ -92,6 +94,7 @@ Per testare l'applicazione usa:
 ### Admin
 - ✅ Dashboard amministrativa completa
 - ✅ Gestione utenti (CRUD)
+- ✅ Assegnazione gerarchia Manager → TL → Developer
 - ✅ Gestione progetti (CRUD)
 - ✅ Visualizzazione statistiche globali
 - ✅ Consuntivazione personale
@@ -100,6 +103,7 @@ Per testare l'applicazione usa:
 ### Manager / Team Lead
 - ✅ Dashboard team
 - ✅ Gestione progetti (CRUD)
+- ✅ Sezione dedicata "Il mio team"
 - ✅ Monitoraggio consuntivi del team
 - ✅ Consuntivazione personale
 - ✅ Calendario personale
@@ -152,7 +156,7 @@ lib/
 
 ### Storage
 - **SharedPreferences**: Persistenza dati locale
-- **Firebase (struttura pronta)**: Cloud Firestore + regole/indici (con fallback locale)
+- **FirebaseAuth + Cloud Firestore**: autenticazione reale, profili/ruoli e sync dati
 
 ### UI Components
 - **Material Design 3**: Design system moderno
@@ -183,8 +187,8 @@ lib/
 ## 🔐 Sicurezza
 
 ⚠️ **Nota**: Questa è una versione demo/prototipo:
-- L'autenticazione è semplificata (password = email)
-- I dati sono salvati localmente (SharedPreferences)
+- L'autenticazione usa FirebaseAuth (Email/Password)
+- I dati possono essere sincronizzati su Firestore con fallback locale
 - Non c'è crittografia dei dati
 - **Per produzione**: Implementare backend, database reale, OAuth, JWT, HTTPS
 
@@ -195,7 +199,7 @@ lib/
 - [ ] Autenticazione sicura (JWT, OAuth2)
 - [ ] Cloud storage
 - [x] Struttura Firebase base (collections, sync service, rules, indexes)
-- [ ] Setup FirebaseAuth completo (login reale)
+- [x] Setup FirebaseAuth completo (login reale + sessione persistente)
 - [ ] Export dati (PDF, Excel)
 - [ ] Multi-language support
 - [ ] Dark mode

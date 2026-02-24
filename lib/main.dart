@@ -81,7 +81,8 @@ class _SplashScreenState extends State<SplashScreen> {
     final dataService = context.read<DataService>();
 
     // Initialize services
-    await Future.wait([authService.initialize(), dataService.initialize()]);
+    await authService.initialize();
+    await dataService.initialize();
 
     // Schedule notifications if user is logged in
     if (authService.isLoggedIn) {

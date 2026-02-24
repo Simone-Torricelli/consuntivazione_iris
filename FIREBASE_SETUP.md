@@ -15,9 +15,7 @@ Esegui da root progetto:
 flutterfire configure
 ```
 
-Questo genera `lib/firebase/firebase_options.dart` reale.
-
-Nota: nel repository c'è un placeholder con `isConfigured = false`.
+Questo genera/aggiorna `lib/firebase/firebase_options.dart`.
 
 ## 3) Deploy regole e indici
 Da root progetto:
@@ -33,9 +31,9 @@ File usati:
 
 ## 4) Struttura collezioni
 - `users/{userId}`
-  - id, email, name, surname, role, developerType, isActive, createdAt
+  - id, email, name, surname, role, developerType, managerId, teamLeadId, isActive, createdAt
 - `projects/{projectId}`
-  - id, name, description, color, isActive, createdAt, assignedUserIds
+  - id, name, description, color, ownerUserId, isActive, createdAt, assignedUserIds
 - `timesheet_entries/{entryId}`
   - id, userId, projectId, date, hours, notes, createdAt, updatedAt
 
@@ -45,10 +43,23 @@ File usati:
 - `teamLead`: gestione progetti + visibilità team
 - `employee`: solo consuntivazione personale
 
+### Gerarchia team
+- Admin assegna:
+  - `managerId` sui documenti `teamLead`
+  - `teamLeadId` sui documenti `employee`
+- Manager vede i TL con `managerId = managerUid` e i developer dei TL seguiti.
+- Team Lead vede i developer con `teamLeadId = teamLeadUid`.
+
+### Ownership progetti
+- I progetti creati da TL hanno `ownerUserId = tlUid`.
+- In app, il TL vede solo progetti con `ownerUserId` uguale al suo uid.
+
 ## 6) Fallback locale
 Se Firebase non è configurato o fallisce:
 - l'app usa SharedPreferences come prima,
 - i servizi continuano a funzionare senza blocchi.
 
-## 7) Passo successivo consigliato
-Sostituire il login demo (password = email) con `FirebaseAuth` reale mantenendo la stessa UX.
+## 7) Auth reale
+- Login/registrazione usano FirebaseAuth (Email/Password).
+- Sessione persistente: l’utente resta loggato dopo chiusura e riapertura app.
+- Al primo login viene creato/aggiornato il profilo in `users/{uid}`.

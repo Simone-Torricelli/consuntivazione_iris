@@ -8,12 +8,16 @@ enum DeveloperType { android, ios, fullStack, backend, frontend, designer, qa }
 
 @JsonSerializable()
 class User {
+  static const Object _unset = Object();
+
   final String id;
   final String email;
   final String name;
   final String surname;
   final UserRole role;
   final DeveloperType? developerType;
+  final String? managerId;
+  final String? teamLeadId;
   final bool isActive;
   final DateTime createdAt;
 
@@ -24,6 +28,8 @@ class User {
     required this.surname,
     required this.role,
     this.developerType,
+    this.managerId,
+    this.teamLeadId,
     this.isActive = true,
     required this.createdAt,
   });
@@ -37,7 +43,9 @@ class User {
     String? name,
     String? surname,
     UserRole? role,
-    DeveloperType? developerType,
+    Object? developerType = _unset,
+    Object? managerId = _unset,
+    Object? teamLeadId = _unset,
     bool? isActive,
     DateTime? createdAt,
   }) {
@@ -47,7 +55,15 @@ class User {
       name: name ?? this.name,
       surname: surname ?? this.surname,
       role: role ?? this.role,
-      developerType: developerType ?? this.developerType,
+      developerType: identical(developerType, _unset)
+          ? this.developerType
+          : developerType as DeveloperType?,
+      managerId: identical(managerId, _unset)
+          ? this.managerId
+          : managerId as String?,
+      teamLeadId: identical(teamLeadId, _unset)
+          ? this.teamLeadId
+          : teamLeadId as String?,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
     );

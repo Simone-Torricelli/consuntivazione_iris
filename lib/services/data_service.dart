@@ -41,11 +41,13 @@ class DataService extends ChangeNotifier {
         await _loadFromLocal(prefs);
       }
 
-      if (_projects.isEmpty) {
+      if (!_firebaseSync.isEnabled && _projects.isEmpty) {
         await _createSampleProjects();
       }
-      await _ensureSystemProjects();
-      await _ensureDefaultAdminUser();
+      if (!_firebaseSync.isEnabled) {
+        await _ensureSystemProjects();
+        await _ensureDefaultAdminUser();
+      }
 
       await _saveUsers(syncRemote: false);
       await _saveProjects(syncRemote: false);
@@ -153,6 +155,10 @@ class DataService extends ChangeNotifier {
   }
 
   Future<void> _ensureDefaultAdminUser() async {
+    if (_firebaseSync.isEnabled) {
+      return;
+    }
+
     final hasAdmin = _users.any((u) => u.role == UserRole.admin);
     if (hasAdmin) {
       return;
@@ -173,20 +179,36 @@ class DataService extends ChangeNotifier {
 
   Future<void> addUser(User user) async {
     _users.add(user);
-    await _saveUsers();
+    await _saveUsers(syncRemote: false);
+
+    if (_firebaseSync.isEnabled) {
+      try {
+        await _firebaseSync.upsertUser(user);
+      } catch (e) {
+        debugPrint('Firebase upsertUser error: $e');
+      }
+    }
   }
 
   Future<void> updateUser(User user) async {
     final index = _users.indexWhere((u) => u.id == user.id);
     if (index != -1) {
       _users[index] = user;
-      await _saveUsers();
+      await _saveUsers(syncRemote: false);
+
+      if (_firebaseSync.isEnabled) {
+        try {
+          await _firebaseSync.upsertUser(user);
+        } catch (e) {
+          debugPrint('Firebase upsertUser error: $e');
+        }
+      }
     }
   }
 
   Future<void> deleteUser(String userId) async {
     _users.removeWhere((u) => u.id == userId);
-    await _saveUsers();
+    await _saveUsers(syncRemote: false);
 
     if (_firebaseSync.isEnabled) {
       try {
@@ -199,20 +221,36 @@ class DataService extends ChangeNotifier {
 
   Future<void> addProject(Project project) async {
     _projects.add(project);
-    await _saveProjects();
+    await _saveProjects(syncRemote: false);
+
+    if (_firebaseSync.isEnabled) {
+      try {
+        await _firebaseSync.upsertProject(project);
+      } catch (e) {
+        debugPrint('Firebase upsertProject error: $e');
+      }
+    }
   }
 
   Future<void> updateProject(Project project) async {
     final index = _projects.indexWhere((p) => p.id == project.id);
     if (index != -1) {
       _projects[index] = project;
-      await _saveProjects();
+      await _saveProjects(syncRemote: false);
+
+      if (_firebaseSync.isEnabled) {
+        try {
+          await _firebaseSync.upsertProject(project);
+        } catch (e) {
+          debugPrint('Firebase upsertProject error: $e');
+        }
+      }
     }
   }
 
   Future<void> deleteProject(String projectId) async {
     _projects.removeWhere((p) => p.id == projectId);
-    await _saveProjects();
+    await _saveProjects(syncRemote: false);
 
     if (_firebaseSync.isEnabled) {
       try {
@@ -230,7 +268,15 @@ class DataService extends ChangeNotifier {
     }
 
     _timesheetEntries.add(entry);
-    await _saveTimesheetEntries();
+    await _saveTimesheetEntries(syncRemote: false);
+
+    if (_firebaseSync.isEnabled) {
+      try {
+        await _firebaseSync.upsertTimesheetEntry(entry);
+      } catch (e) {
+        debugPrint('Firebase upsertTimesheetEntry error: $e');
+      }
+    }
     return true;
   }
 
@@ -255,7 +301,15 @@ class DataService extends ChangeNotifier {
       }
 
       _timesheetEntries[index] = entry;
-      await _saveTimesheetEntries();
+      await _saveTimesheetEntries(syncRemote: false);
+
+      if (_firebaseSync.isEnabled) {
+        try {
+          await _firebaseSync.upsertTimesheetEntry(entry);
+        } catch (e) {
+          debugPrint('Firebase upsertTimesheetEntry error: $e');
+        }
+      }
       return true;
     }
     return false;
@@ -263,7 +317,7 @@ class DataService extends ChangeNotifier {
 
   Future<void> deleteTimesheetEntry(String entryId) async {
     _timesheetEntries.removeWhere((t) => t.id == entryId);
-    await _saveTimesheetEntries();
+    await _saveTimesheetEntries(syncRemote: false);
 
     if (_firebaseSync.isEnabled) {
       try {
@@ -395,7 +449,7 @@ class DataService extends ChangeNotifier {
     return result;
   }
 
-  Future<void> _saveUsers({bool syncRemote = true}) async {
+  Future<void> _saveUsers({bool syncRemote = false}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _usersKey,
@@ -413,7 +467,7 @@ class DataService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _saveProjects({bool syncRemote = true}) async {
+  Future<void> _saveProjects({bool syncRemote = false}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _projectsKey,
@@ -431,7 +485,7 @@ class DataService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _saveTimesheetEntries({bool syncRemote = true}) async {
+  Future<void> _saveTimesheetEntries({bool syncRemote = false}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _timesheetKey,
@@ -462,6 +516,105 @@ class DataService extends ChangeNotifier {
       return _users.firstWhere((u) => u.id == userId);
     } catch (e) {
       return null;
+    }
+  }
+
+  List<User> getUsersByRole(UserRole role) {
+    return _users.where((u) => u.role == role && u.isActive).toList();
+  }
+
+  List<User> getTeamLeadsForManager(String managerId) {
+    return _users
+        .where(
+          (u) =>
+              u.role == UserRole.teamLead &&
+              u.managerId == managerId &&
+              u.isActive,
+        )
+        .toList();
+  }
+
+  List<User> getDevelopersForTeamLead(String teamLeadId) {
+    return _users
+        .where(
+          (u) =>
+              u.role == UserRole.employee &&
+              u.teamLeadId == teamLeadId &&
+              u.isActive,
+        )
+        .toList();
+  }
+
+  List<User> getDevelopersForManager(String managerId) {
+    final teamLeads = getTeamLeadsForManager(
+      managerId,
+    ).map((u) => u.id).toSet();
+    return _users
+        .where(
+          (u) =>
+              u.role == UserRole.employee &&
+              u.teamLeadId != null &&
+              teamLeads.contains(u.teamLeadId) &&
+              u.isActive,
+        )
+        .toList();
+  }
+
+  List<User> getTeamMembersForUser(User user) {
+    switch (user.role) {
+      case UserRole.admin:
+        return _users
+            .where((u) => u.role != UserRole.admin && u.isActive)
+            .toList();
+      case UserRole.manager:
+        return [
+          ...getTeamLeadsForManager(user.id),
+          ...getDevelopersForManager(user.id),
+        ];
+      case UserRole.teamLead:
+        return getDevelopersForTeamLead(user.id);
+      case UserRole.employee:
+        return [user];
+    }
+  }
+
+  List<Project> getProjectsVisibleForUser(User user) {
+    final activeProjects = _projects.where((p) => p.isActive).toList();
+    if (user.role == UserRole.teamLead) {
+      return activeProjects.where((p) => p.ownerUserId == user.id).toList();
+    }
+    return activeProjects;
+  }
+
+  bool canAccessProject({required User viewer, required Project project}) {
+    if (viewer.role == UserRole.teamLead) {
+      return project.ownerUserId == viewer.id;
+    }
+    return true;
+  }
+
+  bool canViewUser({required User viewer, required User target}) {
+    if (viewer.id == target.id) {
+      return true;
+    }
+
+    switch (viewer.role) {
+      case UserRole.admin:
+        return true;
+      case UserRole.manager:
+        final teamLeadIds = getTeamLeadsForManager(
+          viewer.id,
+        ).map((u) => u.id).toSet();
+        return (target.role == UserRole.teamLead &&
+                target.managerId == viewer.id) ||
+            (target.role == UserRole.employee &&
+                target.teamLeadId != null &&
+                teamLeadIds.contains(target.teamLeadId));
+      case UserRole.teamLead:
+        return target.role == UserRole.employee &&
+            target.teamLeadId == viewer.id;
+      case UserRole.employee:
+        return false;
     }
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/data_service.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/animated_reveal.dart';
 import '../theme/app_theme.dart';
@@ -39,13 +40,17 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (success) {
+      await context.read<DataService>().initialize();
+      if (!mounted) return;
       Navigator.of(
         context,
       ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
     } else {
+      final errorMessage =
+          authService.lastError ?? 'Email o password non corretti';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Email o password non corretti'),
+        SnackBar(
+          content: Text(errorMessage),
           backgroundColor: AppTheme.errorColor,
         ),
       );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/project_model.dart';
+import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/data_service.dart';
 import '../theme/app_theme.dart';
@@ -208,11 +209,21 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                                     '#${selectedColor.toARGB32().toRadixString(16).substring(2)}';
 
                                 if (project == null) {
+                                  final currentUser = context
+                                      .read<AuthService>()
+                                      .currentUser;
+                                  final ownerUserId =
+                                      currentUser?.role == UserRole.teamLead ||
+                                          currentUser?.role == UserRole.manager
+                                      ? currentUser?.id
+                                      : null;
+
                                   final newProject = Project(
                                     id: 'proj_${DateTime.now().millisecondsSinceEpoch}',
                                     name: nameController.text.trim(),
                                     description: descController.text.trim(),
                                     color: colorHex,
+                                    ownerUserId: ownerUserId,
                                     createdAt: DateTime.now(),
                                   );
                                   await context.read<DataService>().addProject(
@@ -332,7 +343,10 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
     final authService = context.watch<AuthService>();
     final dataService = context.watch<DataService>();
     final canManageProjects = authService.canManageProjects;
-    final projects = dataService.projects.where((p) => p.isActive).toList();
+    final currentUser = authService.currentUser;
+    final projects = currentUser == null
+        ? dataService.projects.where((p) => p.isActive).toList()
+        : dataService.getProjectsVisibleForUser(currentUser);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Projects Studio')),
@@ -403,6 +417,23 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                   ),
                   child: const Text(
                     'Accesso in sola lettura: solo Admin, Manager e Team Lead possono creare o modificare progetti.',
+                    style: AppTheme.bodySmall,
+                  ),
+                ),
+              ),
+            if (currentUser?.role == UserRole.teamLead)
+              AnimatedReveal(
+                delay: const Duration(milliseconds: 110),
+                child: Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    'Vista Team Lead: qui trovi solo i progetti di tua ownership.',
                     style: AppTheme.bodySmall,
                   ),
                 ),

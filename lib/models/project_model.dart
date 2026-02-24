@@ -8,6 +8,7 @@ class Project {
   final String name;
   final String description;
   final String color; // Hex color
+  final String? ownerUserId;
   final bool isActive;
   final DateTime createdAt;
   final List<String> assignedUserIds;
@@ -17,6 +18,7 @@ class Project {
     required this.name,
     required this.description,
     required this.color,
+    this.ownerUserId,
     this.isActive = true,
     required this.createdAt,
     this.assignedUserIds = const [],
@@ -31,6 +33,7 @@ class Project {
     String? name,
     String? description,
     String? color,
+    String? ownerUserId,
     bool? isActive,
     DateTime? createdAt,
     List<String>? assignedUserIds,
@@ -40,6 +43,7 @@ class Project {
       name: name ?? this.name,
       description: description ?? this.description,
       color: color ?? this.color,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       assignedUserIds: assignedUserIds ?? this.assignedUserIds,

@@ -11,6 +11,7 @@ Project _$ProjectFromJson(Map<String, dynamic> json) => Project(
   name: json['name'] as String,
   description: json['description'] as String,
   color: json['color'] as String,
+  ownerUserId: json['ownerUserId'] as String?,
   isActive: json['isActive'] as bool? ?? true,
   createdAt: DateTime.parse(json['createdAt'] as String),
   assignedUserIds:
@@ -25,6 +26,7 @@ Map<String, dynamic> _$ProjectToJson(Project instance) => <String, dynamic>{
   'name': instance.name,
   'description': instance.description,
   'color': instance.color,
+  'ownerUserId': instance.ownerUserId,
   'isActive': instance.isActive,
   'createdAt': instance.createdAt.toIso8601String(),
   'assignedUserIds': instance.assignedUserIds,

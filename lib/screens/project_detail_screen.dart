@@ -97,7 +97,7 @@ class ProjectDetailScreen extends StatelessWidget {
             AnimatedReveal(
               delay: const Duration(milliseconds: 60),
               child: BurstHeroCard(
-                title: 'Project Pulse',
+                title: '${project.name} - ore totali',
                 value: totalHours.toStringAsFixed(1),
                 unit: 'ore',
                 subtitle:

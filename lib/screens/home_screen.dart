@@ -19,9 +19,48 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
   int _webSelectedIndex = 0;
+  late AnimationController _confettiController;
+  bool _showConfetti = false;
+  bool _confettiChecked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _confettiController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    );
+  }
+
+  @override
+  void dispose() {
+    _confettiController.dispose();
+    super.dispose();
+  }
+
+  void _checkAndShowConfetti(bool isSalaryDay) {
+    if (_confettiChecked) return;
+    _confettiChecked = true;
+    
+    if (isSalaryDay && !_showConfetti) {
+      setState(() {
+        _showConfetti = true;
+      });
+      _confettiController.forward().then((_) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            setState(() {
+              _showConfetti = false;
+            });
+          }
+        });
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +71,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final salaryDay = dataService.getLastWorkingDay(now);
     final isSalaryDay = DateUtils.isSameDay(DateUtils.dateOnly(now), salaryDay);
     final isWideLayout = MediaQuery.sizeOf(context).width >= 1100;
+
+    // Mostra confetti solo al primo build se è il giorno dello stipendio
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndShowConfetti(isSalaryDay);
+    });
 
     final mobileScreens = <Widget>[
       const TimeSheetScreen(),
@@ -230,25 +274,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 );
                               },
                             ),
-                            if (isSalaryDay)
-                              Align(
-                                alignment: Alignment.topCenter,
-                                child: SafeArea(
-                                  minimum: const EdgeInsets.fromLTRB(
-                                    14,
-                                    10,
-                                    14,
-                                    0,
-                                  ),
-                                  child: _SalaryCelebrationBanner(
-                                    onOpenCalendar: () {
-                                      setState(() {
-                                        _webSelectedIndex = 2;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ),
+                            if (_showConfetti)
+                              _ConfettiOverlay(controller: _confettiController),
                           ],
                         ),
                       ),
@@ -312,20 +339,8 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
-          if (isSalaryDay)
-            Align(
-              alignment: Alignment.topCenter,
-              child: SafeArea(
-                minimum: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: _SalaryCelebrationBanner(
-                  onOpenCalendar: () {
-                    setState(() {
-                      _selectedIndex = 1;
-                    });
-                  },
-                ),
-              ),
-            ),
+          if (_showConfetti)
+            _ConfettiOverlay(controller: _confettiController),
         ],
       ),
       bottomNavigationBar: _AnimatedDockBar(
@@ -335,188 +350,6 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             _selectedIndex = index;
           });
-        },
-      ),
-    );
-  }
-}
-
-class _SalaryCelebrationBanner extends StatefulWidget {
-  final VoidCallback onOpenCalendar;
-
-  const _SalaryCelebrationBanner({required this.onOpenCalendar});
-
-  @override
-  State<_SalaryCelebrationBanner> createState() =>
-      _SalaryCelebrationBannerState();
-}
-
-class _SalaryCelebrationBannerState extends State<_SalaryCelebrationBanner>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        final wave = math.sin(_controller.value * math.pi * 2);
-        return Transform.scale(scale: 1 + (wave * 0.015), child: child);
-      },
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFF7A18), Color(0xFFFFB703), Color(0xFF05D5E8)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.accentColor.withValues(alpha: 0.36),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            const _CelebrationIcons(),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Oggi e giorno stipendio! 🎉',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 15,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Ultimo giorno lavorativo del mese.',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            TextButton(
-              onPressed: widget.onOpenCalendar,
-              style: TextButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: AppTheme.textPrimaryColor,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                minimumSize: const Size(0, 0),
-              ),
-              child: const Text(
-                'Apri',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CelebrationIcons extends StatefulWidget {
-  const _CelebrationIcons();
-
-  @override
-  State<_CelebrationIcons> createState() => _CelebrationIconsState();
-}
-
-class _CelebrationIconsState extends State<_CelebrationIcons>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 48,
-      height: 44,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          final t = _controller.value;
-          final dyA = math.sin(t * math.pi * 2) * 2;
-          final dyB = math.cos(t * math.pi * 2) * 2;
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                left: 6,
-                top: 8 + dyA,
-                child: const Icon(
-                  Icons.payments_rounded,
-                  color: Colors.white,
-                  size: 22,
-                ),
-              ),
-              Positioned(
-                right: -2,
-                top: -2 + dyB,
-                child: const Icon(
-                  Icons.auto_awesome,
-                  color: Colors.white,
-                  size: 14,
-                ),
-              ),
-              Positioned(
-                right: 2,
-                bottom: 2 - dyA,
-                child: const Icon(
-                  Icons.celebration,
-                  color: Colors.white,
-                  size: 13,
-                ),
-              ),
-            ],
-          );
         },
       ),
     );
@@ -694,6 +527,106 @@ class _WebSidebarNav extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _ConfettiOverlay extends StatelessWidget {
+  final AnimationController controller;
+
+  const _ConfettiOverlay({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, child) {
+          return CustomPaint(
+            size: MediaQuery.of(context).size,
+            painter: _ConfettiPainter(
+              animation: controller.value,
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ConfettiPainter extends CustomPainter {
+  final double animation;
+  final List<_Confetti> confetti;
+
+  _ConfettiPainter({required this.animation})
+      : confetti = List.generate(
+          50,
+          (i) => _Confetti(
+            seed: i,
+            colors: [
+              const Color(0xFFFF7A18),
+              const Color(0xFFFFB703),
+              const Color(0xFF05D5E8),
+              const Color(0xFF1757FF),
+              const Color(0xFF7B61FF),
+            ],
+          ),
+        );
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final c in confetti) {
+      c.paint(canvas, size, animation);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+class _Confetti {
+  final int seed;
+  final List<Color> colors;
+  late final double x;
+  late final double rotation;
+  late final double rotationSpeed;
+  late final Color color;
+  late final double size;
+  late final double speed;
+
+  _Confetti({required this.seed, required this.colors}) {
+    final random = math.Random(seed);
+    x = random.nextDouble();
+    rotation = random.nextDouble() * math.pi * 2;
+    rotationSpeed = (random.nextDouble() - 0.5) * 4;
+    color = colors[random.nextInt(colors.length)];
+    size = 8 + random.nextDouble() * 6;
+    speed = 0.6 + random.nextDouble() * 0.4;
+  }
+
+  void paint(Canvas canvas, Size size, double t) {
+    final y = t * speed;
+    if (y > 1.0) return;
+
+    final xPos = x * size.width;
+    final yPos = y * size.height;
+    final angle = rotation + t * rotationSpeed * math.pi * 2;
+
+    canvas.save();
+    canvas.translate(xPos, yPos);
+    canvas.rotate(angle);
+
+    final paint = Paint()..color = color;
+    final rect = Rect.fromCenter(
+      center: Offset.zero,
+      width: this.size,
+      height: this.size * 0.6,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+      paint,
+    );
+
+    canvas.restore();
   }
 }
 

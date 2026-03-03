@@ -29,6 +29,10 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     DeveloperType? selectedType = user?.developerType;
     String? selectedManagerId = user?.managerId;
     String? selectedTeamLeadId = user?.teamLeadId;
+    bool isAdminContributor =
+        user?.role == UserRole.admin &&
+        user?.teamLeadId != null &&
+        user!.teamLeadId!.trim().isNotEmpty;
 
     await showModalBottomSheet(
       context: context,
@@ -138,6 +142,10 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                                 ),
                                 items: const [
                                   DropdownMenuItem(
+                                    value: UserRole.admin,
+                                    child: Text('Admin'),
+                                  ),
+                                  DropdownMenuItem(
                                     value: UserRole.employee,
                                     child: Text('Developer'),
                                   ),
@@ -156,16 +164,79 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                                     selectedRole = value;
                                     if (value == UserRole.manager ||
                                         value == UserRole.admin) {
-                                      selectedManagerId = null;
-                                      selectedTeamLeadId = null;
+                                      if (value == UserRole.manager) {
+                                        selectedManagerId = null;
+                                        selectedTeamLeadId = null;
+                                        isAdminContributor = false;
+                                      }
                                     } else if (value == UserRole.teamLead) {
                                       selectedTeamLeadId = null;
+                                      isAdminContributor = false;
                                     } else if (value == UserRole.employee) {
                                       selectedManagerId = null;
+                                      isAdminContributor = false;
                                     }
                                   });
                                 },
                               ),
+                              if (selectedRole == UserRole.admin) ...[
+                                const SizedBox(height: 12),
+                                SwitchListTile.adaptive(
+                                  value: isAdminContributor,
+                                  onChanged: (value) {
+                                    setSheetState(() {
+                                      isAdminContributor = value;
+                                      if (!isAdminContributor) {
+                                        selectedTeamLeadId = null;
+                                        selectedManagerId = null;
+                                      }
+                                    });
+                                  },
+                                  title: const Text(
+                                    'Admin contributor sotto Team Lead',
+                                  ),
+                                  subtitle: const Text(
+                                    'Permette di tracciare l\'admin come risorsa team.',
+                                    style: AppTheme.bodySmall,
+                                  ),
+                                ),
+                                if (isAdminContributor) ...[
+                                  const SizedBox(height: 12),
+                                  DropdownButtonFormField<String?>(
+                                    initialValue: selectedTeamLeadId,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Team Lead di riferimento',
+                                      prefixIcon: Icon(Icons.groups_outlined),
+                                    ),
+                                    items: [
+                                      const DropdownMenuItem<String?>(
+                                        value: null,
+                                        child: Text('Nessuno'),
+                                      ),
+                                      ...teamLeads.map(
+                                        (tl) => DropdownMenuItem<String?>(
+                                          value: tl.id,
+                                          child: Text(tl.fullName),
+                                        ),
+                                      ),
+                                    ],
+                                    onChanged: (value) {
+                                      setSheetState(() {
+                                        selectedTeamLeadId = value;
+                                        User? selectedTl;
+                                        for (final tl in teamLeads) {
+                                          if (tl.id == value) {
+                                            selectedTl = tl;
+                                            break;
+                                          }
+                                        }
+                                        selectedManagerId =
+                                            selectedTl?.managerId;
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ],
                               if (selectedRole == UserRole.teamLead) ...[
                                 const SizedBox(height: 12),
                                 DropdownButtonFormField<String?>(
@@ -295,9 +366,15 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                                     developerType: selectedType,
                                     managerId: selectedRole == UserRole.teamLead
                                         ? selectedManagerId
+                                        : selectedRole == UserRole.admin &&
+                                              isAdminContributor
+                                        ? selectedManagerId
                                         : null,
                                     teamLeadId:
                                         selectedRole == UserRole.employee
+                                        ? selectedTeamLeadId
+                                        : selectedRole == UserRole.admin &&
+                                              isAdminContributor
                                         ? selectedTeamLeadId
                                         : null,
                                     createdAt: DateTime.now(),
@@ -317,9 +394,15 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                                     developerType: selectedType,
                                     managerId: selectedRole == UserRole.teamLead
                                         ? selectedManagerId
+                                        : selectedRole == UserRole.admin &&
+                                              isAdminContributor
+                                        ? selectedManagerId
                                         : null,
                                     teamLeadId:
                                         selectedRole == UserRole.employee
+                                        ? selectedTeamLeadId
+                                        : selectedRole == UserRole.admin &&
+                                              isAdminContributor
                                         ? selectedTeamLeadId
                                         : null,
                                   );
@@ -440,9 +523,9 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
       );
     }
 
-    final users = dataService.users
-        .where((u) => u.role != UserRole.admin)
-        .toList();
+    final currentAdmin = authService.currentUser;
+    final users = dataService.users.where((u) => u.isActive).toList();
+    final adminCount = users.where((u) => u.role == UserRole.admin).length;
     final managerCount = users.where((u) => u.role == UserRole.manager).length;
     final teamLeadCount = users
         .where((u) => u.role == UserRole.teamLead)
@@ -477,6 +560,7 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                 delay: const Duration(milliseconds: 60),
                 child: _PeopleHeroCard(
                   totalPeople: users.length,
+                  admins: adminCount,
                   managers: managerCount,
                   teamLeads: teamLeadCount,
                   developers: developerCount,
@@ -571,7 +655,20 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                                     _openUserSheet(user: user);
                                   }
                                   if (value == 'delete') {
-                                    _openDeleteUserSheet(user);
+                                    if (currentAdmin != null &&
+                                        currentAdmin.id == user.id) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Non puoi eliminare il tuo utente.',
+                                          ),
+                                        ),
+                                      );
+                                    } else {
+                                      _openDeleteUserSheet(user);
+                                    }
                                   }
                                 },
                                 itemBuilder: (context) => const [
@@ -649,12 +746,14 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
 
 class _PeopleHeroCard extends StatelessWidget {
   final int totalPeople;
+  final int admins;
   final int managers;
   final int teamLeads;
   final int developers;
 
   const _PeopleHeroCard({
     required this.totalPeople,
+    required this.admins,
     required this.managers,
     required this.teamLeads,
     required this.developers,
@@ -699,6 +798,10 @@ class _PeopleHeroCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
+              Expanded(
+                child: _RoleMetric(label: 'Admin', value: admins.toString()),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: _RoleMetric(
                   label: 'Manager',

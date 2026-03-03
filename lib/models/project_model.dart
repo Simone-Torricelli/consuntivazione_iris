@@ -8,6 +8,12 @@ class Project {
   final String name;
   final String description;
   final String color; // Hex color
+  final String? commessaId;
+  final bool isBillable;
+  final double? hourlyCost;
+  final double? hourlyRate;
+  final double? estimatedHours;
+  final double? estimatedBudget;
   final String? ownerUserId;
   final bool isActive;
   final DateTime createdAt;
@@ -18,6 +24,12 @@ class Project {
     required this.name,
     required this.description,
     required this.color,
+    this.commessaId,
+    this.isBillable = false,
+    this.hourlyCost,
+    this.hourlyRate,
+    this.estimatedHours,
+    this.estimatedBudget,
     this.ownerUserId,
     this.isActive = true,
     required this.createdAt,
@@ -33,6 +45,12 @@ class Project {
     String? name,
     String? description,
     String? color,
+    String? commessaId,
+    bool? isBillable,
+    double? hourlyCost,
+    double? hourlyRate,
+    double? estimatedHours,
+    double? estimatedBudget,
     String? ownerUserId,
     bool? isActive,
     DateTime? createdAt,
@@ -43,6 +61,12 @@ class Project {
       name: name ?? this.name,
       description: description ?? this.description,
       color: color ?? this.color,
+      commessaId: commessaId ?? this.commessaId,
+      isBillable: isBillable ?? this.isBillable,
+      hourlyCost: hourlyCost ?? this.hourlyCost,
+      hourlyRate: hourlyRate ?? this.hourlyRate,
+      estimatedHours: estimatedHours ?? this.estimatedHours,
+      estimatedBudget: estimatedBudget ?? this.estimatedBudget,
       ownerUserId: ownerUserId ?? this.ownerUserId,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,

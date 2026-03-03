@@ -45,7 +45,7 @@ class _HomeScreenState extends State<HomeScreen>
   void _checkAndShowConfetti(bool isSalaryDay) {
     if (_confettiChecked) return;
     _confettiChecked = true;
-    
+
     if (isSalaryDay && !_showConfetti) {
       setState(() {
         _showConfetti = true;
@@ -339,8 +339,7 @@ class _HomeScreenState extends State<HomeScreen>
               );
             },
           ),
-          if (_showConfetti)
-            _ConfettiOverlay(controller: _confettiController),
+          if (_showConfetti) _ConfettiOverlay(controller: _confettiController),
         ],
       ),
       bottomNavigationBar: _AnimatedDockBar(
@@ -543,9 +542,7 @@ class _ConfettiOverlay extends StatelessWidget {
         builder: (context, child) {
           return CustomPaint(
             size: MediaQuery.of(context).size,
-            painter: _ConfettiPainter(
-              animation: controller.value,
-            ),
+            painter: _ConfettiPainter(animation: controller.value),
           );
         },
       ),
@@ -558,19 +555,19 @@ class _ConfettiPainter extends CustomPainter {
   final List<_Confetti> confetti;
 
   _ConfettiPainter({required this.animation})
-      : confetti = List.generate(
-          50,
-          (i) => _Confetti(
-            seed: i,
-            colors: [
-              const Color(0xFFFF7A18),
-              const Color(0xFFFFB703),
-              const Color(0xFF05D5E8),
-              const Color(0xFF1757FF),
-              const Color(0xFF7B61FF),
-            ],
-          ),
-        );
+    : confetti = List.generate(
+        50,
+        (i) => _Confetti(
+          seed: i,
+          colors: [
+            const Color(0xFFFF7A18),
+            const Color(0xFFFFB703),
+            const Color(0xFF05D5E8),
+            const Color(0xFF1757FF),
+            const Color(0xFF7B61FF),
+          ],
+        ),
+      );
 
   @override
   void paint(Canvas canvas, Size size) {

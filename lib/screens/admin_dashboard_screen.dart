@@ -1,24 +1,310 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 
 import '../models/project_model.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/data_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/web_download.dart';
 import '../widgets/animated_reveal.dart';
 import '../widgets/project_card.dart';
 import '../widgets/stat_card.dart';
+import 'manage_commesse_screen.dart';
 import 'manage_projects_screen.dart';
 import 'manage_users_screen.dart';
 import 'person_detail_screen.dart';
 import 'project_detail_screen.dart';
 import 'team_overview_screen.dart';
 
-class AdminDashboardScreen extends StatelessWidget {
+class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
+
+  @override
+  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  late DateTime _selectedMonth;
+  String? _selectedTeamLeadFilterId;
+  String? _selectedProjectFilterId;
+  DeveloperType? _selectedDeveloperTypeFilter;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _selectedMonth = DateTime(now.year, now.month, 1);
+  }
+
+  void _changeMonth(int offset) {
+    setState(() {
+      _selectedMonth = DateTime(
+        _selectedMonth.year,
+        _selectedMonth.month + offset,
+        1,
+      );
+    });
+  }
+
+  Future<void> _pickMonth(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedMonth,
+      firstDate: DateTime(2020, 1, 1),
+      lastDate: DateTime(2100, 12, 31),
+      locale: const Locale('it'),
+      initialDatePickerMode: DatePickerMode.year,
+    );
+    if (picked == null) {
+      return;
+    }
+    setState(() {
+      _selectedMonth = DateTime(picked.year, picked.month, 1);
+    });
+  }
+
+  Future<void> _exportMonthlyReportCsv({
+    required User viewer,
+    required DateTime monthReference,
+    required List<_UserMonthStat> userStats,
+    required List<Project> projects,
+    required DataService dataService,
+  }) async {
+    final monthLabel = DateFormat('yyyy-MM', 'it').format(monthReference);
+    final buffer = StringBuffer()
+      ..writeln(
+        'mese;viewer;utente_id;utente_nome;utente_email;ruolo;progetto_id;progetto_nome;ore_totali_utente;ore_progetto_utente;giorni_perfetti;completion_pct',
+      );
+
+    final projectById = {for (final p in projects) p.id: p};
+    final monthStart = DateTime(monthReference.year, monthReference.month, 1);
+    final monthEnd = DateTime(monthReference.year, monthReference.month + 1, 0);
+
+    for (final stat in userStats) {
+      final byProject = dataService.getHoursByProjectForUser(
+        stat.user.id,
+        startDate: monthStart,
+        endDate: monthEnd,
+      );
+
+      if (byProject.isEmpty) {
+        buffer.writeln(
+          '$monthLabel;${viewer.email};${stat.user.id};${_escapeCsv(stat.user.fullName)};${stat.user.email};${stat.user.role.displayName};;;'
+          '${stat.totalHours.toStringAsFixed(1)};0.0;${stat.perfectDays};${(stat.completionRate * 100).round()}',
+        );
+        continue;
+      }
+
+      for (final entry in byProject.entries) {
+        final project = projectById[entry.key];
+        buffer.writeln(
+          '$monthLabel;${viewer.email};${stat.user.id};${_escapeCsv(stat.user.fullName)};${stat.user.email};${stat.user.role.displayName};${entry.key};${_escapeCsv(project?.name ?? 'N/D')};${stat.totalHours.toStringAsFixed(1)};${entry.value.toStringAsFixed(1)};${stat.perfectDays};${(stat.completionRate * 100).round()}',
+        );
+      }
+    }
+
+    final fileName =
+        'iris_report_${viewer.role.displayName.toLowerCase()}_${monthReference.year}_${monthReference.month.toString().padLeft(2, '0')}.csv';
+    final content = buffer.toString();
+    final downloaded = downloadTextFile(
+      fileName: fileName,
+      content: utf8.decode([0xEF, 0xBB, 0xBF]) + content,
+      mimeType: 'text/csv;charset=utf-8',
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (downloaded) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Export CSV avviato. Apribile con Excel.'),
+        ),
+      );
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: content));
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'CSV copiato negli appunti (su questa piattaforma download non disponibile).',
+        ),
+      ),
+    );
+  }
+
+  String _escapeCsv(String input) {
+    if (!input.contains(';') && !input.contains('"') && !input.contains('\n')) {
+      return input;
+    }
+    return '"${input.replaceAll('"', '""')}"';
+  }
+
+  Future<void> _exportMonthlyReportXlsx({
+    required User viewer,
+    required DateTime monthReference,
+    required List<_UserMonthStat> userStats,
+    required List<Project> projects,
+    required DataService dataService,
+  }) async {
+    final workbook = xlsio.Workbook(3);
+    final usersSheet = workbook.worksheets[0];
+    usersSheet.name = 'Utenti';
+    final projectsSheet = workbook.worksheets[1];
+    projectsSheet.name = 'Progetti';
+    final economicsSheet = workbook.worksheets[2];
+    economicsSheet.name = 'Economico';
+
+    final monthStart = DateTime(monthReference.year, monthReference.month, 1);
+    final monthEnd = DateTime(monthReference.year, monthReference.month + 1, 0);
+    final monthLabel = DateFormat('yyyy-MM', 'it').format(monthReference);
+
+    usersSheet.getRangeByName('A1').setText('Mese');
+    usersSheet.getRangeByName('B1').setText('Utente');
+    usersSheet.getRangeByName('C1').setText('Email');
+    usersSheet.getRangeByName('D1').setText('Ruolo');
+    usersSheet.getRangeByName('E1').setText('Ore Totali');
+    usersSheet.getRangeByName('F1').setText('Giorni Perfetti');
+    usersSheet.getRangeByName('G1').setText('Completion %');
+
+    var userRow = 2;
+    for (final stat in userStats) {
+      usersSheet.getRangeByIndex(userRow, 1).setText(monthLabel);
+      usersSheet.getRangeByIndex(userRow, 2).setText(stat.user.fullName);
+      usersSheet.getRangeByIndex(userRow, 3).setText(stat.user.email);
+      usersSheet
+          .getRangeByIndex(userRow, 4)
+          .setText(stat.user.role.displayName);
+      usersSheet
+          .getRangeByIndex(userRow, 5)
+          .setNumber(stat.totalHours.toDouble());
+      usersSheet
+          .getRangeByIndex(userRow, 6)
+          .setNumber(stat.perfectDays.toDouble());
+      usersSheet
+          .getRangeByIndex(userRow, 7)
+          .setNumber((stat.completionRate * 100).toDouble());
+      userRow++;
+    }
+
+    projectsSheet.getRangeByName('A1').setText('Mese');
+    projectsSheet.getRangeByName('B1').setText('Progetto');
+    projectsSheet.getRangeByName('C1').setText('Commessa');
+    projectsSheet.getRangeByName('D1').setText('Ore Mese');
+    projectsSheet.getRangeByName('E1').setText('Owner');
+    projectsSheet.getRangeByName('F1').setText('Contributors');
+
+    var projectRow = 2;
+    for (final project in projects) {
+      final hours = dataService.getProjectTotalHours(
+        project.id,
+        startDate: monthStart,
+        endDate: monthEnd,
+      );
+      final commessa = project.commessaId == null
+          ? null
+          : dataService.getCommessaById(project.commessaId!);
+      final owner = project.ownerUserId == null
+          ? null
+          : dataService.getUserById(project.ownerUserId!);
+      projectsSheet.getRangeByIndex(projectRow, 1).setText(monthLabel);
+      projectsSheet.getRangeByIndex(projectRow, 2).setText(project.name);
+      projectsSheet
+          .getRangeByIndex(projectRow, 3)
+          .setText(commessa?.codice ?? '');
+      projectsSheet.getRangeByIndex(projectRow, 4).setNumber(hours);
+      projectsSheet
+          .getRangeByIndex(projectRow, 5)
+          .setText(owner?.fullName ?? '');
+      projectsSheet
+          .getRangeByIndex(projectRow, 6)
+          .setNumber(project.assignedUserIds.length.toDouble());
+      projectRow++;
+    }
+
+    economicsSheet.getRangeByName('A1').setText('Mese');
+    economicsSheet.getRangeByName('B1').setText('Progetto');
+    economicsSheet.getRangeByName('C1').setText('Costo Consuntivato');
+    economicsSheet.getRangeByName('D1').setText('Ricavo Stimato');
+    economicsSheet.getRangeByName('E1').setText('Margine Lordo');
+    economicsSheet.getRangeByName('F1').setText('Burn Rate %');
+    economicsSheet.getRangeByName('G1').setText('Forecast Costo Mese');
+
+    var ecoRow = 2;
+    for (final project in projects.where((p) => p.isBillable)) {
+      final cost = dataService.getProjectConsumedCost(
+        project.id,
+        startDate: monthStart,
+        endDate: monthEnd,
+      );
+      final revenue = dataService.getProjectEstimatedRevenue(
+        project.id,
+        startDate: monthStart,
+        endDate: monthEnd,
+      );
+      final margin = dataService.getProjectGrossMargin(
+        project.id,
+        startDate: monthStart,
+        endDate: monthEnd,
+      );
+      final burnRate = dataService.getProjectBudgetBurnRate(
+        project.id,
+        startDate: monthStart,
+        endDate: monthEnd,
+      );
+      final forecast = dataService.getProjectForecastMonthlyCost(
+        project.id,
+        monthReference,
+      );
+
+      economicsSheet.getRangeByIndex(ecoRow, 1).setText(monthLabel);
+      economicsSheet.getRangeByIndex(ecoRow, 2).setText(project.name);
+      economicsSheet.getRangeByIndex(ecoRow, 3).setNumber(cost);
+      economicsSheet.getRangeByIndex(ecoRow, 4).setNumber(revenue);
+      economicsSheet.getRangeByIndex(ecoRow, 5).setNumber(margin);
+      economicsSheet.getRangeByIndex(ecoRow, 6).setNumber(burnRate * 100);
+      economicsSheet.getRangeByIndex(ecoRow, 7).setNumber(forecast);
+      ecoRow++;
+    }
+
+    final bytes = workbook.saveAsStream();
+    workbook.dispose();
+
+    final fileName =
+        'iris_report_${viewer.role.displayName.toLowerCase()}_${monthReference.year}_${monthReference.month.toString().padLeft(2, '0')}.xlsx';
+    final downloaded = downloadBinaryFile(fileName: fileName, bytes: bytes);
+
+    if (!mounted) {
+      return;
+    }
+
+    if (downloaded) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Export XLSX avviato.')));
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Download XLSX non disponibile su questa piattaforma. Usa export CSV.',
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,18 +316,67 @@ class AdminDashboardScreen extends StatelessWidget {
     }
 
     final users = switch (currentUser.role) {
-      UserRole.admin => dataService.getUsersByRole(UserRole.employee),
+      UserRole.admin =>
+        dataService.users
+            .where(
+              (u) =>
+                  u.isActive &&
+                  (u.role == UserRole.employee ||
+                      (u.role == UserRole.admin &&
+                          u.teamLeadId != null &&
+                          u.teamLeadId!.trim().isNotEmpty)),
+            )
+            .toList(),
       UserRole.manager => dataService.getDevelopersForManager(currentUser.id),
       UserRole.teamLead => dataService.getDevelopersForTeamLead(currentUser.id),
       UserRole.employee => <User>[],
     };
-    final teamMembers = dataService.getTeamMembersForUser(currentUser);
-    final projects = dataService.getProjectsVisibleForUser(currentUser);
+    final visibleTeamLeads = switch (currentUser.role) {
+      UserRole.admin => dataService.getUsersByRole(UserRole.teamLead),
+      UserRole.manager => dataService.getTeamLeadsForManager(currentUser.id),
+      UserRole.teamLead => <User>[],
+      UserRole.employee => <User>[],
+    };
+    final allVisibleProjects = dataService.getProjectsVisibleForUser(
+      currentUser,
+    );
+
+    final filterProjectOptions = allVisibleProjects.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+
+    String? effectiveTeamLeadFilterId = _selectedTeamLeadFilterId;
+    if (effectiveTeamLeadFilterId != null &&
+        !visibleTeamLeads.any((u) => u.id == effectiveTeamLeadFilterId)) {
+      effectiveTeamLeadFilterId = null;
+    }
+
+    String? effectiveProjectFilterId = _selectedProjectFilterId;
+    if (effectiveProjectFilterId != null &&
+        !filterProjectOptions.any((p) => p.id == effectiveProjectFilterId)) {
+      effectiveProjectFilterId = null;
+    }
+
+    if (effectiveTeamLeadFilterId != _selectedTeamLeadFilterId ||
+        effectiveProjectFilterId != _selectedProjectFilterId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _selectedTeamLeadFilterId = effectiveTeamLeadFilterId;
+          _selectedProjectFilterId = effectiveProjectFilterId;
+        });
+      });
+    }
 
     final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1);
-    final monthEnd = DateTime(now.year, now.month + 1, 0);
-    final trackedEnd = now.isBefore(monthEnd) ? now : monthEnd;
+    final monthStart = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
+    final monthEnd = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0);
+    final isCurrentMonth =
+        _selectedMonth.year == now.year && _selectedMonth.month == now.month;
+    final trackedEnd = isCurrentMonth && now.isBefore(monthEnd)
+        ? now
+        : monthEnd;
 
     final elapsedWorkingDays = dataService.getWorkingDaysInRange(
       monthStart,
@@ -49,12 +384,53 @@ class AdminDashboardScreen extends StatelessWidget {
     );
     final targetHoursPerUser = elapsedWorkingDays * 8.0;
 
-    final userStats = users.map((user) {
-      final entries = dataService.getEntriesForUser(
+    var filteredUsers = users.where((user) => user.isActive).toList();
+    if (effectiveTeamLeadFilterId != null &&
+        effectiveTeamLeadFilterId.trim().isNotEmpty) {
+      final tlDevelopers = dataService
+          .getDevelopersForTeamLead(effectiveTeamLeadFilterId)
+          .map((u) => u.id)
+          .toSet();
+      filteredUsers = filteredUsers
+          .where((user) => tlDevelopers.contains(user.id))
+          .toList();
+    }
+    if (_selectedDeveloperTypeFilter != null) {
+      filteredUsers = filteredUsers
+          .where((u) => u.developerType == _selectedDeveloperTypeFilter)
+          .toList();
+    }
+
+    if (effectiveProjectFilterId != null) {
+      final selectedProject = allVisibleProjects.firstWhere(
+        (project) => project.id == effectiveProjectFilterId,
+      );
+      filteredUsers = filteredUsers.where((user) {
+        if (selectedProject.assignedUserIds.contains(user.id)) {
+          return true;
+        }
+        return dataService.hasUserWorkedOnProject(user.id, selectedProject.id);
+      }).toList();
+    }
+
+    final teamMembers = filteredUsers;
+    final projects = effectiveProjectFilterId == null
+        ? allVisibleProjects
+        : allVisibleProjects
+              .where((project) => project.id == effectiveProjectFilterId)
+              .toList();
+
+    final userStats = filteredUsers.map((user) {
+      var entries = dataService.getEntriesForUser(
         user.id,
         monthStart,
         monthEnd,
       );
+      if (effectiveProjectFilterId != null) {
+        entries = entries
+            .where((entry) => entry.projectId == effectiveProjectFilterId)
+            .toList();
+      }
       final totalHours = entries.fold<double>(
         0,
         (sum, entry) => sum + entry.hours,
@@ -88,6 +464,10 @@ class AdminDashboardScreen extends StatelessWidget {
         .where((stat) => stat.totalHours < (targetHoursPerUser * 0.75))
         .length;
     final topContributor = userStats.isEmpty ? null : userStats.first;
+    final monthlyKpi = dataService.getMonthlyKpiForUsers(
+      users: filteredUsers,
+      monthReference: _selectedMonth,
+    );
 
     final title = switch (currentUser.role) {
       UserRole.admin => 'Console Admin',
@@ -97,7 +477,9 @@ class AdminDashboardScreen extends StatelessWidget {
     };
 
     final visibleProjectIds = projects.map((project) => project.id).toSet();
+    final filteredUserIds = filteredUsers.map((u) => u.id).toSet();
     final projectHours = <String, double>{};
+    final projectHoursByUser = <String, Map<String, double>>{};
     final last7DaysDailyHours = <DateTime, double>{};
     final trendStart = DateUtils.dateOnly(
       now.subtract(const Duration(days: 6)),
@@ -105,16 +487,25 @@ class AdminDashboardScreen extends StatelessWidget {
 
     for (final project in projects) {
       projectHours[project.id] = 0;
+      projectHoursByUser[project.id] = <String, double>{};
     }
 
     for (final entry in dataService.timesheetEntries) {
       if (!visibleProjectIds.contains(entry.projectId)) {
         continue;
       }
+      if (filteredUserIds.isNotEmpty &&
+          !filteredUserIds.contains(entry.userId)) {
+        continue;
+      }
 
       if (!entry.date.isBefore(monthStart) && !entry.date.isAfter(monthEnd)) {
         projectHours[entry.projectId] =
             (projectHours[entry.projectId] ?? 0) + entry.hours;
+        final byUser =
+            projectHoursByUser[entry.projectId] ?? <String, double>{};
+        byUser[entry.userId] = (byUser[entry.userId] ?? 0) + entry.hours;
+        projectHoursByUser[entry.projectId] = byUser;
       }
 
       final day = DateUtils.dateOnly(entry.date);
@@ -124,8 +515,105 @@ class AdminDashboardScreen extends StatelessWidget {
       }
     }
 
+    final economicRows =
+        projects
+            .map((project) {
+              final cost = dataService.getProjectConsumedCost(
+                project.id,
+                startDate: monthStart,
+                endDate: monthEnd,
+              );
+              final revenue = dataService.getProjectEstimatedRevenue(
+                project.id,
+                startDate: monthStart,
+                endDate: monthEnd,
+              );
+              final margin = dataService.getProjectGrossMargin(
+                project.id,
+                startDate: monthStart,
+                endDate: monthEnd,
+              );
+              final burnRate = dataService.getProjectBudgetBurnRate(
+                project.id,
+                startDate: monthStart,
+                endDate: monthEnd,
+              );
+              return _ProjectEconomicRow(
+                project: project,
+                consumedCost: cost,
+                estimatedRevenue: revenue,
+                grossMargin: margin,
+                burnRate: burnRate,
+              );
+            })
+            .where(
+              (row) =>
+                  row.project.isBillable ||
+                  row.consumedCost > 0 ||
+                  row.estimatedRevenue > 0,
+            )
+            .toList()
+          ..sort((a, b) => b.consumedCost.compareTo(a.consumedCost));
+
+    final totalConsumedCost = economicRows.fold<double>(
+      0,
+      (sum, row) => sum + row.consumedCost,
+    );
+    final totalEstimatedRevenue = economicRows.fold<double>(
+      0,
+      (sum, row) => sum + row.estimatedRevenue,
+    );
+    final totalGrossMargin = economicRows.fold<double>(
+      0,
+      (sum, row) => sum + row.grossMargin,
+    );
+
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title),
+        actions: [
+          if (currentUser.role != UserRole.employee)
+            IconButton(
+              tooltip: 'Gestisci commesse',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ManageCommesseScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.business_center_outlined),
+            ),
+          PopupMenuButton<String>(
+            tooltip: 'Export report',
+            onSelected: (value) {
+              if (value == 'csv') {
+                _exportMonthlyReportCsv(
+                  viewer: currentUser,
+                  monthReference: _selectedMonth,
+                  userStats: userStats,
+                  projects: projects,
+                  dataService: dataService,
+                );
+              } else if (value == 'xlsx') {
+                _exportMonthlyReportXlsx(
+                  viewer: currentUser,
+                  monthReference: _selectedMonth,
+                  userStats: userStats,
+                  projects: projects,
+                  dataService: dataService,
+                );
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'xlsx', child: Text('Export XLSX')),
+              PopupMenuItem(value: 'csv', child: Text('Export CSV')),
+            ],
+            icon: const Icon(Icons.download_outlined),
+          ),
+        ],
+      ),
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: AppTheme.appBackgroundGradient,
@@ -147,13 +635,61 @@ class AdminDashboardScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   AnimatedReveal(
+                    delay: const Duration(milliseconds: 40),
+                    child: _MonthSelectorBar(
+                      selectedMonth: _selectedMonth,
+                      onPrevious: () => _changeMonth(-1),
+                      onNext: () => _changeMonth(1),
+                      onPickMonth: () => _pickMonth(context),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  AnimatedReveal(
+                    delay: const Duration(milliseconds: 52),
+                    child: _DashboardFilters(
+                      visibleTeamLeads: visibleTeamLeads,
+                      visibleProjects: filterProjectOptions,
+                      selectedTeamLeadId: effectiveTeamLeadFilterId,
+                      selectedProjectId: effectiveProjectFilterId,
+                      selectedDeveloperType: _selectedDeveloperTypeFilter,
+                      onTeamLeadChanged: (value) {
+                        setState(() {
+                          _selectedTeamLeadFilterId = value;
+                        });
+                      },
+                      onProjectChanged: (value) {
+                        setState(() {
+                          _selectedProjectFilterId = value;
+                        });
+                      },
+                      onDeveloperTypeChanged: (value) {
+                        setState(() {
+                          _selectedDeveloperTypeFilter = value;
+                        });
+                      },
+                      onReset: () {
+                        setState(() {
+                          _selectedTeamLeadFilterId = null;
+                          _selectedProjectFilterId = null;
+                          _selectedDeveloperTypeFilter = null;
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  AnimatedReveal(
                     delay: const Duration(milliseconds: 60),
                     child: _HeroOverview(
-                      now: now,
+                      now: monthStart,
                       elapsedWorkingDays: elapsedWorkingDays,
                       targetHoursPerUser: targetHoursPerUser,
                       alertCount: alertCount,
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  AnimatedReveal(
+                    delay: const Duration(milliseconds: 90),
+                    child: _OfficialKpiPanel(kpi: monthlyKpi),
                   ),
                   const SizedBox(height: 16),
                   AnimatedReveal(
@@ -302,6 +838,34 @@ class AdminDashboardScreen extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if ((currentUser.role == UserRole.manager ||
+                          currentUser.role == UserRole.teamLead ||
+                          currentUser.role == UserRole.admin) &&
+                      projects.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    AnimatedReveal(
+                      delay: const Duration(milliseconds: 210),
+                      child: _ProjectUserBreakdownPanel(
+                        projects: projects,
+                        projectHours: projectHours,
+                        projectHoursByUser: projectHoursByUser,
+                        getUserById: dataService.getUserById,
+                        parseColor: _parseColor,
+                      ),
+                    ),
+                  ],
+                  if (economicRows.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    AnimatedReveal(
+                      delay: const Duration(milliseconds: 215),
+                      child: _EconomicOverviewPanel(
+                        rows: economicRows,
+                        totalConsumedCost: totalConsumedCost,
+                        totalEstimatedRevenue: totalEstimatedRevenue,
+                        totalGrossMargin: totalGrossMargin,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   const Text(
                     'Andamento per sviluppatore',
@@ -439,6 +1003,23 @@ class AdminDashboardScreen extends StatelessWidget {
                       );
                     },
                   ),
+                  if (currentUser.role != UserRole.employee) ...[
+                    const SizedBox(height: 10),
+                    _QuickActionCard(
+                      title: 'Commesse GECO',
+                      subtitle: 'Anagrafica commesse e stato',
+                      icon: Icons.business_center_outlined,
+                      color: AppTheme.accentColor,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ManageCommesseScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                   if (currentUser.role == UserRole.manager ||
                       currentUser.role == UserRole.teamLead) ...[
                     const SizedBox(height: 10),
@@ -663,6 +1244,534 @@ class _ProjectAnalyticsPanel extends StatelessWidget {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardFilters extends StatelessWidget {
+  final List<User> visibleTeamLeads;
+  final List<Project> visibleProjects;
+  final String? selectedTeamLeadId;
+  final String? selectedProjectId;
+  final DeveloperType? selectedDeveloperType;
+  final ValueChanged<String?> onTeamLeadChanged;
+  final ValueChanged<String?> onProjectChanged;
+  final ValueChanged<DeveloperType?> onDeveloperTypeChanged;
+  final VoidCallback onReset;
+
+  const _DashboardFilters({
+    required this.visibleTeamLeads,
+    required this.visibleProjects,
+    required this.selectedTeamLeadId,
+    required this.selectedProjectId,
+    required this.selectedDeveloperType,
+    required this.onTeamLeadChanged,
+    required this.onProjectChanged,
+    required this.onDeveloperTypeChanged,
+    required this.onReset,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFDCE8F9)),
+      ),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (visibleTeamLeads.isNotEmpty)
+            SizedBox(
+              width: 240,
+              child: DropdownButtonFormField<String?>(
+                initialValue: selectedTeamLeadId,
+                decoration: const InputDecoration(
+                  labelText: 'Filtro Team Lead',
+                  prefixIcon: Icon(Icons.groups_outlined),
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Tutti i Team Lead'),
+                  ),
+                  ...visibleTeamLeads.map(
+                    (tl) => DropdownMenuItem<String?>(
+                      value: tl.id,
+                      child: Text(tl.fullName),
+                    ),
+                  ),
+                ],
+                onChanged: onTeamLeadChanged,
+              ),
+            ),
+          SizedBox(
+            width: 240,
+            child: DropdownButtonFormField<String?>(
+              initialValue: selectedProjectId,
+              decoration: const InputDecoration(
+                labelText: 'Filtro Progetto',
+                prefixIcon: Icon(Icons.folder_outlined),
+              ),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Tutti i Progetti'),
+                ),
+                ...visibleProjects.map(
+                  (project) => DropdownMenuItem<String?>(
+                    value: project.id,
+                    child: Text(project.name),
+                  ),
+                ),
+              ],
+              onChanged: onProjectChanged,
+            ),
+          ),
+          SizedBox(
+            width: 240,
+            child: DropdownButtonFormField<DeveloperType?>(
+              initialValue: selectedDeveloperType,
+              decoration: const InputDecoration(
+                labelText: 'Filtro Specializzazione',
+                prefixIcon: Icon(Icons.code_outlined),
+              ),
+              items: [
+                const DropdownMenuItem<DeveloperType?>(
+                  value: null,
+                  child: Text('Tutte le specializzazioni'),
+                ),
+                ...DeveloperType.values.map(
+                  (type) => DropdownMenuItem<DeveloperType?>(
+                    value: type,
+                    child: Text(type.displayName),
+                  ),
+                ),
+              ],
+              onChanged: onDeveloperTypeChanged,
+            ),
+          ),
+          TextButton.icon(
+            onPressed: onReset,
+            icon: const Icon(Icons.restart_alt),
+            label: const Text('Reset filtri'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OfficialKpiPanel extends StatelessWidget {
+  final TeamMonthlyKpi kpi;
+
+  const _OfficialKpiPanel({required this.kpi});
+
+  @override
+  Widget build(BuildContext context) {
+    final completion = (kpi.completionRate * 100)
+        .clamp(0, 999)
+        .toStringAsFixed(0);
+    final saturation = (kpi.saturationRate * 100)
+        .clamp(0, 999)
+        .toStringAsFixed(0);
+    final quality = (kpi.qualityScore * 100).clamp(0, 999).toStringAsFixed(0);
+    final completionAlert = kpi.completionRate < 0.85;
+    final overload = kpi.saturationRate > 1.10;
+    final underload = kpi.saturationRate < 0.70;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFDCE8F9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('KPI Ufficiali Mensili', style: AppTheme.heading3),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _KpiBadge(
+                label: 'Completion',
+                value: '$completion%',
+                alert: completionAlert,
+              ),
+              _KpiBadge(
+                label: 'Over/Under',
+                value: '${kpi.overtimeUnderTimeHours.toStringAsFixed(1)}h',
+                alert: false,
+              ),
+              _KpiBadge(
+                label: 'Saturazione',
+                value: '$saturation%',
+                alert: overload || underload,
+              ),
+              _KpiBadge(
+                label: 'DSO',
+                value: '${kpi.dsoAverageDays.toStringAsFixed(2)} gg',
+                alert: kpi.dsoAverageDays > 1.0,
+              ),
+              _KpiBadge(
+                label: 'Quality',
+                value: '$quality%',
+                alert: kpi.qualityScore < 0.70,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KpiBadge extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool alert;
+
+  const _KpiBadge({
+    required this.label,
+    required this.value,
+    required this.alert,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = alert ? AppTheme.errorColor : AppTheme.primaryColor;
+    return Container(
+      constraints: const BoxConstraints(minWidth: 140),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: AppTheme.bodySmall),
+          Text(
+            value,
+            style: AppTheme.bodyLarge.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProjectEconomicRow {
+  final Project project;
+  final double consumedCost;
+  final double estimatedRevenue;
+  final double grossMargin;
+  final double burnRate;
+
+  const _ProjectEconomicRow({
+    required this.project,
+    required this.consumedCost,
+    required this.estimatedRevenue,
+    required this.grossMargin,
+    required this.burnRate,
+  });
+}
+
+class _EconomicOverviewPanel extends StatelessWidget {
+  final List<_ProjectEconomicRow> rows;
+  final double totalConsumedCost;
+  final double totalEstimatedRevenue;
+  final double totalGrossMargin;
+
+  const _EconomicOverviewPanel({
+    required this.rows,
+    required this.totalConsumedCost,
+    required this.totalEstimatedRevenue,
+    required this.totalGrossMargin,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFDCE8F9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('KPI Economici Progetto', style: AppTheme.heading3),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            children: [
+              _MoneyChip(label: 'Costo', value: totalConsumedCost),
+              _MoneyChip(label: 'Ricavo', value: totalEstimatedRevenue),
+              _MoneyChip(label: 'Margine', value: totalGrossMargin),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...rows.take(6).map((row) {
+            final burnPct = (row.burnRate * 100)
+                .clamp(0, 999)
+                .toStringAsFixed(0);
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE9EFFA)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(row.project.name, style: AppTheme.bodyMedium),
+                  ),
+                  Text(
+                    'Costo ${row.consumedCost.toStringAsFixed(0)}€',
+                    style: AppTheme.bodySmall,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Burn $burnPct%',
+                    style: AppTheme.bodySmall.copyWith(
+                      color: row.burnRate > 1.0
+                          ? AppTheme.errorColor
+                          : AppTheme.textSecondaryColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+class _MoneyChip extends StatelessWidget {
+  final String label;
+  final double value;
+
+  const _MoneyChip({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$label: ${value.toStringAsFixed(0)}€',
+        style: AppTheme.bodySmall.copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _MonthSelectorBar extends StatelessWidget {
+  final DateTime selectedMonth;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final VoidCallback onPickMonth;
+
+  const _MonthSelectorBar({
+    required this.selectedMonth,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onPickMonth,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFDCE8F9)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onPrevious,
+            icon: const Icon(Icons.chevron_left_rounded),
+            tooltip: 'Mese precedente',
+          ),
+          Expanded(
+            child: TextButton.icon(
+              onPressed: onPickMonth,
+              icon: const Icon(Icons.calendar_month_outlined, size: 18),
+              label: Text(
+                DateFormat('MMMM yyyy', 'it').format(selectedMonth),
+                style: AppTheme.bodyLarge.copyWith(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: onNext,
+            icon: const Icon(Icons.chevron_right_rounded),
+            tooltip: 'Mese successivo',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProjectUserBreakdownPanel extends StatelessWidget {
+  final List<Project> projects;
+  final Map<String, double> projectHours;
+  final Map<String, Map<String, double>> projectHoursByUser;
+  final User? Function(String) getUserById;
+  final Color Function(String) parseColor;
+
+  const _ProjectUserBreakdownPanel({
+    required this.projects,
+    required this.projectHours,
+    required this.projectHoursByUser,
+    required this.getUserById,
+    required this.parseColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ordered =
+        projects
+            .where((project) => (projectHours[project.id] ?? 0) > 0)
+            .toList()
+          ..sort(
+            (a, b) =>
+                (projectHours[b.id] ?? 0).compareTo(projectHours[a.id] ?? 0),
+          );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFDCE8F9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Complessivo mese per progetto e utente',
+            style: AppTheme.heading3,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Ore totali progetto con dettaglio contributor.',
+            style: AppTheme.bodySmall,
+          ),
+          const SizedBox(height: 10),
+          if (ordered.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'Nessuna consuntivazione sui progetti nel mese selezionato.',
+                style: AppTheme.bodyMedium,
+              ),
+            )
+          else
+            ...ordered.take(8).map((project) {
+              final total = projectHours[project.id] ?? 0;
+              final contributors =
+                  (projectHoursByUser[project.id] ?? {}).entries.toList()
+                    ..sort((a, b) => b.value.compareTo(a.value));
+              final color = parseColor(project.color);
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE7EEF9)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(project.name, style: AppTheme.bodyLarge),
+                        ),
+                        Text(
+                          '${total.toStringAsFixed(1)}h',
+                          style: AppTheme.bodyLarge.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (contributors.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: contributors.take(6).map((entry) {
+                          final user = getUserById(entry.key);
+                          final name = user?.fullName ?? 'Utente';
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              '$name • ${entry.value.toStringAsFixed(1)}h',
+                              style: AppTheme.bodySmall.copyWith(
+                                color: AppTheme.textPrimaryColor,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }),
         ],
       ),
     );

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/commessa_model.dart';
 import '../models/project_model.dart';
 import '../models/timesheet_entry.dart';
 import '../models/user_model.dart';
@@ -13,10 +14,12 @@ import 'firebase_sync_service.dart';
 class DataService extends ChangeNotifier {
   List<User> _users = [];
   List<Project> _projects = [];
+  List<Commessa> _commesse = [];
   List<TimesheetEntry> _timesheetEntries = [];
   bool _isLoading = false;
   StreamSubscription<List<User>>? _usersSubscription;
   StreamSubscription<List<Project>>? _projectsSubscription;
+  StreamSubscription<List<Commessa>>? _commesseSubscription;
   StreamSubscription<List<TimesheetEntry>>? _timesheetSubscription;
   final StreamController<int> _realtimeTickController =
       StreamController<int>.broadcast();
@@ -26,6 +29,7 @@ class DataService extends ChangeNotifier {
 
   List<User> get users => _users;
   List<Project> get projects => _projects;
+  List<Commessa> get commesse => _commesse;
   List<TimesheetEntry> get timesheetEntries => _timesheetEntries;
   bool get isLoading => _isLoading;
   Stream<int> get realtimeTickStream => _realtimeTickController.stream;
@@ -33,6 +37,7 @@ class DataService extends ChangeNotifier {
 
   static const String _usersKey = 'users';
   static const String _projectsKey = 'projects';
+  static const String _commesseKey = 'commesse';
   static const String _timesheetKey = 'timesheet_entries';
 
   Future<void> initialize() async {
@@ -62,6 +67,7 @@ class DataService extends ChangeNotifier {
 
       await _saveUsers(syncRemote: false);
       await _saveProjects(syncRemote: false);
+      await _saveCommesse(syncRemote: false);
       await _saveTimesheetEntries(syncRemote: false);
     } catch (e) {
       debugPrint('Error initializing data: $e');
@@ -83,6 +89,7 @@ class DataService extends ChangeNotifier {
       await _loadFromFirebase();
       await _saveUsers(syncRemote: false);
       await _saveProjects(syncRemote: false);
+      await _saveCommesse(syncRemote: false);
       await _saveTimesheetEntries(syncRemote: false);
       _emitRealtimeTick();
     } catch (e) {
@@ -120,6 +127,17 @@ class DataService extends ChangeNotifier {
       },
     );
 
+    _commesseSubscription = _firebaseSync.watchCommesse().listen(
+      (commesse) async {
+        _commesse = commesse;
+        _emitRealtimeTick();
+        await _saveCommesse(syncRemote: false);
+      },
+      onError: (error) {
+        debugPrint('Realtime commesse error: $error');
+      },
+    );
+
     _timesheetSubscription = _firebaseSync.watchTimesheetEntries().listen(
       (entries) async {
         _timesheetEntries = entries;
@@ -135,9 +153,11 @@ class DataService extends ChangeNotifier {
   void _cancelRealtimeListeners() {
     _usersSubscription?.cancel();
     _projectsSubscription?.cancel();
+    _commesseSubscription?.cancel();
     _timesheetSubscription?.cancel();
     _usersSubscription = null;
     _projectsSubscription = null;
+    _commesseSubscription = null;
     _timesheetSubscription = null;
   }
 
@@ -152,14 +172,17 @@ class DataService extends ChangeNotifier {
     try {
       final remoteUsers = await _firebaseSync.fetchUsers();
       final remoteProjects = await _firebaseSync.fetchProjects();
+      final remoteCommesse = await _firebaseSync.fetchCommesse();
       final remoteEntries = await _firebaseSync.fetchTimesheetEntries();
 
       _users = remoteUsers;
       _projects = remoteProjects;
+      _commesse = remoteCommesse;
       _timesheetEntries = remoteEntries;
 
       return remoteUsers.isNotEmpty ||
           remoteProjects.isNotEmpty ||
+          remoteCommesse.isNotEmpty ||
           remoteEntries.isNotEmpty;
     } catch (e) {
       debugPrint('Error loading Firebase data: $e');
@@ -178,6 +201,12 @@ class DataService extends ChangeNotifier {
     if (projectsJson != null) {
       final List<dynamic> projectsList = json.decode(projectsJson);
       _projects = projectsList.map((p) => Project.fromJson(p)).toList();
+    }
+
+    final commesseJson = prefs.getString(_commesseKey);
+    if (commesseJson != null) {
+      final List<dynamic> commesseList = json.decode(commesseJson);
+      _commesse = commesseList.map((c) => Commessa.fromJson(c)).toList();
     }
 
     final timesheetJson = prefs.getString(_timesheetKey);
@@ -308,6 +337,10 @@ class DataService extends ChangeNotifier {
   }
 
   Future<void> addProject(Project project) async {
+    if (project.isBillable &&
+        (project.commessaId == null || project.commessaId!.trim().isEmpty)) {
+      throw Exception('Per i progetti fatturabili la commessa e obbligatoria.');
+    }
     _projects.add(project);
     await _saveProjects(syncRemote: false);
 
@@ -321,6 +354,10 @@ class DataService extends ChangeNotifier {
   }
 
   Future<void> updateProject(Project project) async {
+    if (project.isBillable &&
+        (project.commessaId == null || project.commessaId!.trim().isEmpty)) {
+      throw Exception('Per i progetti fatturabili la commessa e obbligatoria.');
+    }
     final index = _projects.indexWhere((p) => p.id == project.id);
     if (index != -1) {
       _projects[index] = project;
@@ -349,6 +386,57 @@ class DataService extends ChangeNotifier {
     }
   }
 
+  Future<void> addCommessa(Commessa commessa) async {
+    _commesse.add(commessa);
+    await _saveCommesse(syncRemote: false);
+
+    if (_firebaseSync.isEnabled) {
+      try {
+        await _firebaseSync.upsertCommessa(commessa);
+      } catch (e) {
+        debugPrint('Firebase upsertCommessa error: $e');
+      }
+    }
+  }
+
+  Future<void> updateCommessa(Commessa commessa) async {
+    final index = _commesse.indexWhere((c) => c.id == commessa.id);
+    if (index == -1) {
+      return;
+    }
+
+    _commesse[index] = commessa;
+    await _saveCommesse(syncRemote: false);
+
+    if (_firebaseSync.isEnabled) {
+      try {
+        await _firebaseSync.upsertCommessa(commessa);
+      } catch (e) {
+        debugPrint('Firebase upsertCommessa error: $e');
+      }
+    }
+  }
+
+  Future<void> deleteCommessa(String commessaId) async {
+    _commesse.removeWhere((c) => c.id == commessaId);
+    for (var i = 0; i < _projects.length; i++) {
+      final project = _projects[i];
+      if (project.commessaId == commessaId) {
+        _projects[i] = project.copyWith(commessaId: null, isBillable: false);
+      }
+    }
+    await _saveCommesse(syncRemote: false);
+    await _saveProjects(syncRemote: false);
+
+    if (_firebaseSync.isEnabled) {
+      try {
+        await _firebaseSync.deleteCommessa(commessaId);
+      } catch (e) {
+        debugPrint('Firebase deleteCommessa error: $e');
+      }
+    }
+  }
+
   Future<bool> addTimesheetEntry(TimesheetEntry entry, {User? actor}) async {
     final dailyTotal = getDailyHours(entry.userId, entry.date);
     if (dailyTotal + entry.hours > 8.0) {
@@ -364,6 +452,13 @@ class DataService extends ChangeNotifier {
       if (project == null || !canTrackProject(user: actor, project: project)) {
         return false;
       }
+    }
+
+    final linkedProject = getProjectById(entry.projectId);
+    if (linkedProject != null &&
+        linkedProject.isBillable &&
+        (entry.commessaId == null || entry.commessaId!.trim().isEmpty)) {
+      return false;
     }
 
     _timesheetEntries.add(entry);
@@ -392,6 +487,13 @@ class DataService extends ChangeNotifier {
             !canTrackProject(user: actor, project: project)) {
           return false;
         }
+      }
+
+      final linkedProject = getProjectById(entry.projectId);
+      if (linkedProject != null &&
+          linkedProject.isBillable &&
+          (entry.commessaId == null || entry.commessaId!.trim().isEmpty)) {
+        return false;
       }
 
       final otherEntries = _timesheetEntries.where(
@@ -596,6 +698,24 @@ class DataService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _saveCommesse({bool syncRemote = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _commesseKey,
+      json.encode(_commesse.map((c) => c.toJson()).toList()),
+    );
+
+    if (syncRemote && _firebaseSync.isEnabled) {
+      try {
+        await _firebaseSync.syncCommesse(_commesse);
+      } catch (e) {
+        debugPrint('Firebase syncCommesse error: $e');
+      }
+    }
+
+    notifyListeners();
+  }
+
   Future<void> _saveTimesheetEntries({bool syncRemote = false}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
@@ -620,6 +740,19 @@ class DataService extends ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  Commessa? getCommessaById(String commessaId) {
+    try {
+      return _commesse.firstWhere((c) => c.id == commessaId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  List<Commessa> getActiveCommesse() {
+    return _commesse.where((c) => c.isActive).toList()
+      ..sort((a, b) => a.codice.compareTo(b.codice));
   }
 
   User? getUserById(String userId) {
@@ -655,7 +788,7 @@ class DataService extends ChangeNotifier {
     return _users
         .where(
           (u) =>
-              u.role == UserRole.employee &&
+              _isTeamContributor(u) &&
               _matchesUserReference(
                 reference: u.teamLeadId,
                 userId: teamLeadId,
@@ -671,7 +804,7 @@ class DataService extends ChangeNotifier {
     return _users
         .where(
           (u) =>
-              u.role == UserRole.employee &&
+              _isTeamContributor(u) &&
               u.teamLeadId != null &&
               teamLeads.any(
                 (tl) => _matchesUserReference(
@@ -683,6 +816,24 @@ class DataService extends ChangeNotifier {
               u.isActive,
         )
         .toList();
+  }
+
+  bool _isTeamContributor(User user) {
+    if (!user.isActive) {
+      return false;
+    }
+
+    if (user.role == UserRole.employee) {
+      return true;
+    }
+
+    // Optional mode: an admin can also be tracked as a team contributor
+    // when explicitly assigned to a Team Lead.
+    if (user.role == UserRole.admin) {
+      return user.teamLeadId != null && user.teamLeadId!.trim().isNotEmpty;
+    }
+
+    return false;
   }
 
   List<User> getTeamMembersForUser(User user) {
@@ -749,6 +900,113 @@ class DataService extends ChangeNotifier {
     return _timesheetEntries.any(
       (entry) => entry.userId == userId && entry.projectId == projectId,
     );
+  }
+
+  double getProjectConsumedCost(
+    String projectId, {
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
+    final project = getProjectById(projectId);
+    if (project == null || project.hourlyCost == null) {
+      return 0;
+    }
+    final hours = getProjectTotalHours(
+      projectId,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    return hours * project.hourlyCost!;
+  }
+
+  double getProjectEstimatedRevenue(
+    String projectId, {
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
+    final project = getProjectById(projectId);
+    if (project == null || project.hourlyRate == null) {
+      return 0;
+    }
+    final hours = getProjectTotalHours(
+      projectId,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    return hours * project.hourlyRate!;
+  }
+
+  double getProjectGrossMargin(
+    String projectId, {
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
+    final revenue = getProjectEstimatedRevenue(
+      projectId,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    final cost = getProjectConsumedCost(
+      projectId,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    return revenue - cost;
+  }
+
+  double getProjectBudgetBurnRate(
+    String projectId, {
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
+    final project = getProjectById(projectId);
+    if (project == null || project.estimatedBudget == null) {
+      return 0;
+    }
+    if (project.estimatedBudget! <= 0) {
+      return 0;
+    }
+    final consumed = getProjectConsumedCost(
+      projectId,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    return consumed / project.estimatedBudget!;
+  }
+
+  double getProjectForecastMonthlyCost(
+    String projectId,
+    DateTime monthReference,
+  ) {
+    final project = getProjectById(projectId);
+    if (project == null || project.hourlyCost == null) {
+      return 0;
+    }
+
+    final monthStart = DateTime(monthReference.year, monthReference.month, 1);
+    final monthEnd = DateTime(monthReference.year, monthReference.month + 1, 0);
+    final today = DateTime.now();
+    final trackedEnd =
+        (today.year == monthReference.year &&
+            today.month == monthReference.month)
+        ? DateUtils.dateOnly(today)
+        : monthEnd;
+
+    final consumedHours = getProjectTotalHours(
+      projectId,
+      startDate: monthStart,
+      endDate: trackedEnd,
+    );
+    final elapsedWorkingDays = getWorkingDaysInRange(monthStart, trackedEnd);
+    final totalWorkingDays = getWorkingDaysInRange(monthStart, monthEnd);
+
+    if (elapsedWorkingDays == 0 || totalWorkingDays == 0) {
+      return consumedHours * project.hourlyCost!;
+    }
+
+    final dailyAvg = consumedHours / elapsedWorkingDays;
+    final forecastHours = dailyAvg * totalWorkingDays;
+    return forecastHours * project.hourlyCost!;
   }
 
   bool isVacationProject(Project project) {
@@ -890,6 +1148,82 @@ class DataService extends ChangeNotifier {
     return (totalHours * 10).round() + (perfectDays * 25);
   }
 
+  TeamMonthlyKpi getMonthlyKpiForUsers({
+    required List<User> users,
+    required DateTime monthReference,
+  }) {
+    final monthStart = DateTime(monthReference.year, monthReference.month, 1);
+    final monthEnd = DateTime(monthReference.year, monthReference.month + 1, 0);
+    final targetWorkingDays = getWorkingDaysInRange(monthStart, monthEnd);
+    final targetPerUser = targetWorkingDays * 8.0;
+
+    if (users.isEmpty) {
+      return TeamMonthlyKpi.empty(monthReference);
+    }
+
+    final userIds = users.map((u) => u.id).toSet();
+    var totalHours = 0.0;
+    var totalPerfectDays = 0;
+    var totalDelayDays = 0;
+    var delayedEntries = 0;
+
+    for (final user in users) {
+      final userEntries = getEntriesForUser(user.id, monthStart, monthEnd);
+      final userHours = userEntries.fold<double>(
+        0,
+        (sum, entry) => sum + entry.hours,
+      );
+      totalHours += userHours;
+      totalPerfectDays += getPerfectDaysCount(
+        userId: user.id,
+        startDate: monthStart,
+        endDate: monthEnd,
+      );
+    }
+
+    for (final entry in _timesheetEntries) {
+      if (!userIds.contains(entry.userId)) {
+        continue;
+      }
+      if (entry.date.isBefore(monthStart) || entry.date.isAfter(monthEnd)) {
+        continue;
+      }
+      final createdDay = DateUtils.dateOnly(entry.createdAt);
+      final entryDay = DateUtils.dateOnly(entry.date);
+      final delay = createdDay.difference(entryDay).inDays;
+      if (delay > 0) {
+        totalDelayDays += delay;
+        delayedEntries++;
+      }
+    }
+
+    final targetTotal = targetPerUser * users.length;
+    final completionRate = targetTotal <= 0 ? 0.0 : totalHours / targetTotal;
+    final overtimeUnderTime = totalHours - targetTotal;
+    final avgHoursPerUser = totalHours / users.length;
+    final saturationRate = targetPerUser <= 0
+        ? 0.0
+        : avgHoursPerUser / targetPerUser;
+    final dsoAverageDays = delayedEntries == 0
+        ? 0.0
+        : totalDelayDays / delayedEntries;
+    final qualityScore = (users.length * targetWorkingDays) == 0
+        ? 0.0
+        : totalPerfectDays / (users.length * targetWorkingDays);
+
+    return TeamMonthlyKpi(
+      monthReference: DateTime(monthReference.year, monthReference.month, 1),
+      targetWorkingDays: targetWorkingDays,
+      targetHoursTotal: targetTotal,
+      actualHoursTotal: totalHours,
+      completionRate: completionRate,
+      overtimeUnderTimeHours: overtimeUnderTime,
+      saturationRate: saturationRate,
+      dsoAverageDays: dsoAverageDays,
+      qualityScore: qualityScore,
+    );
+  }
+
   DateTime _previousWorkingDay(DateTime date) {
     var cursor = date.subtract(const Duration(days: 1));
     while (!isWorkingDay(cursor)) {
@@ -903,5 +1237,43 @@ class DataService extends ChangeNotifier {
     _cancelRealtimeListeners();
     _realtimeTickController.close();
     super.dispose();
+  }
+}
+
+class TeamMonthlyKpi {
+  final DateTime monthReference;
+  final int targetWorkingDays;
+  final double targetHoursTotal;
+  final double actualHoursTotal;
+  final double completionRate;
+  final double overtimeUnderTimeHours;
+  final double saturationRate;
+  final double dsoAverageDays;
+  final double qualityScore;
+
+  const TeamMonthlyKpi({
+    required this.monthReference,
+    required this.targetWorkingDays,
+    required this.targetHoursTotal,
+    required this.actualHoursTotal,
+    required this.completionRate,
+    required this.overtimeUnderTimeHours,
+    required this.saturationRate,
+    required this.dsoAverageDays,
+    required this.qualityScore,
+  });
+
+  factory TeamMonthlyKpi.empty(DateTime monthReference) {
+    return TeamMonthlyKpi(
+      monthReference: DateTime(monthReference.year, monthReference.month, 1),
+      targetWorkingDays: 0,
+      targetHoursTotal: 0,
+      actualHoursTotal: 0,
+      completionRate: 0,
+      overtimeUnderTimeHours: 0,
+      saturationRate: 0,
+      dsoAverageDays: 0,
+      qualityScore: 0,
+    );
   }
 }

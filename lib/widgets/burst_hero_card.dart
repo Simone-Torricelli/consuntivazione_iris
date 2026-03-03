@@ -52,10 +52,7 @@ class BurstHeroCard extends StatelessWidget {
                 const SizedBox(height: 14),
                 _LayeredBigNumber(value: value),
                 const SizedBox(height: 2),
-                Text(
-                  unit,
-                  style: AppTheme.heading2.copyWith(fontSize: 34),
-                ),
+                Text(unit, style: AppTheme.heading2.copyWith(fontSize: 34)),
                 const SizedBox(height: 12),
                 Container(
                   width: double.infinity,

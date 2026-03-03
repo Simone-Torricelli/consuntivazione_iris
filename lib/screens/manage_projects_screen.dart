@@ -8,6 +8,7 @@ import '../services/data_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
 import '../widgets/project_card.dart';
+import 'manage_commesse_screen.dart';
 import 'project_detail_screen.dart';
 
 class ManageProjectsScreen extends StatefulWidget {
@@ -42,18 +43,41 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
         currentUser.role == UserRole.manager;
     final teamLeads = dataService.getUsersByRole(UserRole.teamLead)
       ..sort((a, b) => a.fullName.compareTo(b.fullName));
-    final developers = dataService.getUsersByRole(UserRole.employee)
-      ..sort((a, b) => a.fullName.compareTo(b.fullName));
+    final developers =
+        dataService.users
+            .where(
+              (u) =>
+                  u.isActive &&
+                  (u.role == UserRole.employee || u.role == UserRole.admin),
+            )
+            .toList()
+          ..sort((a, b) => a.fullName.compareTo(b.fullName));
+    final commesse = dataService.getActiveCommesse()
+      ..sort((a, b) => a.codice.compareTo(b.codice));
 
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController(text: project?.name ?? '');
     final descController = TextEditingController(
       text: project?.description ?? '',
     );
+    final hourlyCostController = TextEditingController(
+      text: project?.hourlyCost?.toStringAsFixed(2) ?? '',
+    );
+    final hourlyRateController = TextEditingController(
+      text: project?.hourlyRate?.toStringAsFixed(2) ?? '',
+    );
+    final estimatedHoursController = TextEditingController(
+      text: project?.estimatedHours?.toStringAsFixed(1) ?? '',
+    );
+    final estimatedBudgetController = TextEditingController(
+      text: project?.estimatedBudget?.toStringAsFixed(2) ?? '',
+    );
     Color selectedColor = project != null
         ? Color(int.parse(project.color.replaceFirst('#', '0xFF')))
         : _projectColors[0];
     String? selectedOwnerUserId = project?.ownerUserId;
+    String? selectedCommessaId = project?.commessaId;
+    bool isBillable = project?.isBillable ?? false;
     final selectedDeveloperIds = <String>{...project?.assignedUserIds ?? []};
 
     if (currentUser.role == UserRole.teamLead) {
@@ -176,6 +200,130 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                                     style: AppTheme.bodySmall,
                                   ),
                                 ),
+                              const SizedBox(height: 12),
+                              SwitchListTile.adaptive(
+                                contentPadding: EdgeInsets.zero,
+                                value: isBillable,
+                                title: const Text('Progetto fatturabile'),
+                                subtitle: const Text(
+                                  'Richiede commessa GECO e abilita KPI economici.',
+                                  style: AppTheme.bodySmall,
+                                ),
+                                onChanged: (value) {
+                                  setSheetState(() {
+                                    isBillable = value;
+                                    if (!isBillable) {
+                                      selectedCommessaId = null;
+                                    }
+                                  });
+                                },
+                              ),
+                              if (isBillable) ...[
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  initialValue: selectedCommessaId,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Commessa GECO',
+                                    prefixIcon: Icon(
+                                      Icons.business_center_outlined,
+                                    ),
+                                  ),
+                                  items: commesse
+                                      .map(
+                                        (c) => DropdownMenuItem<String>(
+                                          value: c.id,
+                                          child: Text(
+                                            '${c.codice} • ${c.cliente}',
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (value) {
+                                    setSheetState(() {
+                                      selectedCommessaId = value;
+                                    });
+                                  },
+                                  validator: (value) {
+                                    if (!isBillable) {
+                                      return null;
+                                    }
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Commessa obbligatoria per progetto fatturabile';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: hourlyCostController,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration: const InputDecoration(
+                                          labelText: 'Costo/h',
+                                          prefixIcon: Icon(Icons.euro_outlined),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: hourlyRateController,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration: const InputDecoration(
+                                          labelText: 'Tariffa/h',
+                                          prefixIcon: Icon(
+                                            Icons.trending_up_outlined,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: estimatedHoursController,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration: const InputDecoration(
+                                          labelText: 'Ore stimate',
+                                          prefixIcon: Icon(
+                                            Icons.timer_outlined,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: estimatedBudgetController,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration: const InputDecoration(
+                                          labelText: 'Budget stimato',
+                                          prefixIcon: Icon(
+                                            Icons.savings_outlined,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                               const SizedBox(height: 14),
                               Row(
                                 mainAxisAlignment:
@@ -314,6 +462,18 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                                     '#${selectedColor.toARGB32().toRadixString(16).substring(2)}';
                                 final assignedUserIds =
                                     selectedDeveloperIds.toList()..sort();
+                                final hourlyCost = _parseNullableDouble(
+                                  hourlyCostController.text,
+                                );
+                                final hourlyRate = _parseNullableDouble(
+                                  hourlyRateController.text,
+                                );
+                                final estimatedHours = _parseNullableDouble(
+                                  estimatedHoursController.text,
+                                );
+                                final estimatedBudget = _parseNullableDouble(
+                                  estimatedBudgetController.text,
+                                );
                                 final ownerUserId = canSetTeamLeadOwner
                                     ? selectedOwnerUserId
                                     : currentUser.role == UserRole.teamLead
@@ -326,6 +486,18 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                                     name: nameController.text.trim(),
                                     description: descController.text.trim(),
                                     color: colorHex,
+                                    commessaId: isBillable
+                                        ? selectedCommessaId
+                                        : null,
+                                    isBillable: isBillable,
+                                    hourlyCost: isBillable ? hourlyCost : null,
+                                    hourlyRate: isBillable ? hourlyRate : null,
+                                    estimatedHours: isBillable
+                                        ? estimatedHours
+                                        : null,
+                                    estimatedBudget: isBillable
+                                        ? estimatedBudget
+                                        : null,
                                     ownerUserId: ownerUserId,
                                     assignedUserIds: assignedUserIds,
                                     createdAt: DateTime.now(),
@@ -338,6 +510,18 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                                     name: nameController.text.trim(),
                                     description: descController.text.trim(),
                                     color: colorHex,
+                                    commessaId: isBillable
+                                        ? selectedCommessaId
+                                        : null,
+                                    isBillable: isBillable,
+                                    hourlyCost: isBillable ? hourlyCost : null,
+                                    hourlyRate: isBillable ? hourlyRate : null,
+                                    estimatedHours: isBillable
+                                        ? estimatedHours
+                                        : null,
+                                    estimatedBudget: isBillable
+                                        ? estimatedBudget
+                                        : null,
                                     ownerUserId: ownerUserId,
                                     assignedUserIds: assignedUserIds,
                                   );
@@ -371,6 +555,10 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
     await Future<void>.delayed(const Duration(milliseconds: 400));
     nameController.dispose();
     descController.dispose();
+    hourlyCostController.dispose();
+    hourlyRateController.dispose();
+    estimatedHoursController.dispose();
+    estimatedBudgetController.dispose();
   }
 
   Future<void> _openDeleteProjectSheet(Project project) async {
@@ -454,7 +642,21 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
         : dataService.getProjectsVisibleForUser(currentUser);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Projects Studio')),
+      appBar: AppBar(
+        title: const Text('Projects Studio'),
+        actions: [
+          IconButton(
+            tooltip: 'Gestisci commesse GECO',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ManageCommesseScreen()),
+              );
+            },
+            icon: const Icon(Icons.business_center_outlined),
+          ),
+        ],
+      ),
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: AppTheme.appBackgroundGradient,
@@ -590,8 +792,14 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
                         final workersLabel = workersCount == 1
                             ? '1 persona assegnata'
                             : '$workersCount persone assegnate';
+                        final commessa = project.commessaId == null
+                            ? null
+                            : dataService.getCommessaById(project.commessaId!);
+                        final commessaLabel = project.isBillable
+                            ? 'Commessa: ${commessa?.codice ?? 'non assegnata'}'
+                            : 'Non fatturabile';
                         final description =
-                            '${project.description}\n$ownerLabel • $workersLabel';
+                            '${project.description}\n$ownerLabel • $workersLabel • $commessaLabel';
                         final canModifyProject =
                             canManageProjects &&
                             (currentUser == null ||
@@ -651,5 +859,13 @@ class _ManageProjectsScreenState extends State<ManageProjectsScreen> {
             )
           : null,
     );
+  }
+
+  double? _parseNullableDouble(String raw) {
+    final value = raw.trim().replaceAll(',', '.');
+    if (value.isEmpty) {
+      return null;
+    }
+    return double.tryParse(value);
   }
 }

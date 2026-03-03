@@ -102,7 +102,8 @@ class PersonDetailScreen extends StatelessWidget {
               ),
             ),
             if (currentUser != null &&
-                user.role == UserRole.employee &&
+                (user.role == UserRole.employee ||
+                    user.role == UserRole.admin) &&
                 (currentUser.role == UserRole.admin ||
                     currentUser.role == UserRole.manager)) ...[
               const SizedBox(height: 12),

@@ -31,6 +31,7 @@ dependencies:
   
   # UI Components
   fl_chart: ^0.66.0
+  syncfusion_flutter_xlsio: ^28.2.12
   shimmer: ^3.0.0
   google_fonts: ^6.2.1
   

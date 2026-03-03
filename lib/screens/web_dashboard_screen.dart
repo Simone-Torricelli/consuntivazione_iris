@@ -850,61 +850,110 @@ class _TeamFocusCard extends StatelessWidget {
               ),
             )
           else
-            ...rows.take(8).map((row) {
-              final completion = targetHoursPerMember <= 0
-                  ? 0.0
-                  : (row.hours / targetHoursPerMember).clamp(0.0, 1.0);
-              return InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PersonDetailScreen(userId: row.user.id),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isDesktopTable = constraints.maxWidth >= 680;
+                if (isDesktopTable) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      columns: const [
+                        DataColumn(label: Text('Persona')),
+                        DataColumn(label: Text('Ruolo')),
+                        DataColumn(label: Text('Ore')),
+                        DataColumn(label: Text('Completion')),
+                      ],
+                      rows: rows.take(10).map((row) {
+                        final completion = targetHoursPerMember <= 0
+                            ? 0.0
+                            : (row.hours / targetHoursPerMember).clamp(
+                                0.0,
+                                1.0,
+                              );
+                        return DataRow(
+                          onSelectChanged: (_) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    PersonDetailScreen(userId: row.user.id),
+                              ),
+                            );
+                          },
+                          cells: [
+                            DataCell(Text(row.user.fullName)),
+                            DataCell(Text(row.user.role.displayName)),
+                            DataCell(Text('${row.hours.toStringAsFixed(1)}h')),
+                            DataCell(
+                              Text('${(completion * 100).toStringAsFixed(0)}%'),
+                            ),
+                          ],
+                        );
+                      }).toList(),
                     ),
                   );
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              row.user.fullName,
-                              style: AppTheme.bodyMedium.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.textPrimaryColor,
+                }
+
+                return Column(
+                  children: rows.take(8).map((row) {
+                    final completion = targetHoursPerMember <= 0
+                        ? 0.0
+                        : (row.hours / targetHoursPerMember).clamp(0.0, 1.0);
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                PersonDetailScreen(userId: row.user.id),
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    row.user.fullName,
+                                    style: AppTheme.bodyMedium.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.textPrimaryColor,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  '${row.hours.toStringAsFixed(1)}h',
+                                  style: AppTheme.bodySmall.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: LinearProgressIndicator(
+                                value: completion,
+                                minHeight: 8,
+                                backgroundColor: AppTheme.surfaceMutedColor,
+                                color: completion >= 1
+                                    ? AppTheme.successColor
+                                    : AppTheme.primaryColor,
                               ),
                             ),
-                          ),
-                          Text(
-                            '${row.hours.toStringAsFixed(1)}h',
-                            style: AppTheme.bodySmall.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: completion,
-                          minHeight: 8,
-                          backgroundColor: AppTheme.surfaceMutedColor,
-                          color: completion >= 1
-                              ? AppTheme.successColor
-                              : AppTheme.primaryColor,
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              );
-            }),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
         ],
       ),
     );

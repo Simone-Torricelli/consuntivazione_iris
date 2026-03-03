@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../models/commessa_model.dart';
 import '../models/project_model.dart';
 import '../models/timesheet_entry.dart';
 import '../models/user_model.dart';
@@ -27,6 +28,9 @@ class FirebaseSyncService {
   CollectionReference<Map<String, dynamic>>? _projectsRef(
     FirebaseFirestore db,
   ) => db.collection('projects');
+  CollectionReference<Map<String, dynamic>>? _commesseRef(
+    FirebaseFirestore db,
+  ) => db.collection('commesse');
   CollectionReference<Map<String, dynamic>>? _entriesRef(
     FirebaseFirestore db,
   ) => db.collection('timesheet_entries');
@@ -108,6 +112,24 @@ class FirebaseSyncService {
     }
   }
 
+  Future<List<Commessa>> fetchCommesse() async {
+    final db = _safeFirestore();
+    if (db == null) {
+      return [];
+    }
+
+    try {
+      final snapshot = await _commesseRef(db)!.get();
+      return snapshot.docs
+          .map(_parseCommessaDoc)
+          .whereType<Commessa>()
+          .toList();
+    } catch (e) {
+      debugPrint('Errore fetchCommesse Firebase: $e');
+      return [];
+    }
+  }
+
   Future<List<TimesheetEntry>> fetchTimesheetEntries() async {
     final db = _safeFirestore();
     if (db == null) {
@@ -146,6 +168,18 @@ class FirebaseSyncService {
     return _projectsRef(db)!.snapshots().map(
       (snapshot) =>
           snapshot.docs.map(_parseProjectDoc).whereType<Project>().toList(),
+    );
+  }
+
+  Stream<List<Commessa>> watchCommesse() {
+    final db = _safeFirestore();
+    if (db == null) {
+      return const Stream<List<Commessa>>.empty();
+    }
+
+    return _commesseRef(db)!.snapshots().map(
+      (snapshot) =>
+          snapshot.docs.map(_parseCommessaDoc).whereType<Commessa>().toList(),
     );
   }
 
@@ -203,6 +237,17 @@ class FirebaseSyncService {
     )!.doc(project.id).set(project.toJson(), SetOptions(merge: true));
   }
 
+  Future<void> upsertCommessa(Commessa commessa) async {
+    final db = _safeFirestore();
+    if (db == null) {
+      return;
+    }
+
+    await _commesseRef(
+      db,
+    )!.doc(commessa.id).set(commessa.toJson(), SetOptions(merge: true));
+  }
+
   Future<void> deleteProject(String projectId) async {
     final db = _safeFirestore();
     if (db == null) {
@@ -210,6 +255,15 @@ class FirebaseSyncService {
     }
 
     await _projectsRef(db)!.doc(projectId).delete();
+  }
+
+  Future<void> deleteCommessa(String commessaId) async {
+    final db = _safeFirestore();
+    if (db == null) {
+      return;
+    }
+
+    await _commesseRef(db)!.doc(commessaId).delete();
   }
 
   Future<void> upsertTimesheetEntry(TimesheetEntry entry) async {
@@ -393,6 +447,24 @@ class FirebaseSyncService {
     await batch.commit();
   }
 
+  Future<void> syncCommesse(List<Commessa> commesse) async {
+    final db = _safeFirestore();
+    if (db == null) {
+      return;
+    }
+
+    final batch = db.batch();
+    final commesseRef = _commesseRef(db)!;
+    for (final commessa in commesse) {
+      batch.set(
+        commesseRef.doc(commessa.id),
+        commessa.toJson(),
+        SetOptions(merge: true),
+      );
+    }
+    await batch.commit();
+  }
+
   Future<void> syncTimesheetEntries(List<TimesheetEntry> entries) async {
     final db = _safeFirestore();
     if (db == null) {
@@ -468,6 +540,12 @@ class FirebaseSyncService {
       map['name'] = (map['name'] ?? '').toString();
       map['description'] = (map['description'] ?? '').toString();
       map['color'] = (map['color'] ?? '#1D4ED8').toString();
+      map['commessaId'] = _pickFirstString(map, const ['commessaId']);
+      map['isBillable'] = map['isBillable'] is bool ? map['isBillable'] : false;
+      map['hourlyCost'] = _toDouble(map['hourlyCost']);
+      map['hourlyRate'] = _toDouble(map['hourlyRate']);
+      map['estimatedHours'] = _toDouble(map['estimatedHours']);
+      map['estimatedBudget'] = _toDouble(map['estimatedBudget']);
       map['ownerUserId'] = map['ownerUserId']?.toString();
       map['isActive'] = map['isActive'] is bool ? map['isActive'] : true;
       map['createdAt'] = _toIsoString(map['createdAt']) ?? _nowIso();
@@ -497,6 +575,7 @@ class FirebaseSyncService {
       map['id'] = (map['id'] ?? doc.id).toString();
       map['userId'] = (map['userId'] ?? map['uid'] ?? '').toString();
       map['projectId'] = (map['projectId'] ?? '').toString();
+      map['commessaId'] = _pickFirstString(map, const ['commessaId']);
       map['date'] = _toIsoString(map['date']) ?? _nowIso();
       final rawHours = map['hours'];
       map['hours'] = rawHours is num
@@ -514,6 +593,28 @@ class FirebaseSyncService {
       return TimesheetEntry.fromJson(map);
     } catch (e) {
       debugPrint('Skip timesheet doc non valido (${doc.id}): $e');
+      return null;
+    }
+  }
+
+  Commessa? _parseCommessaDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    if (data == null) {
+      return null;
+    }
+
+    try {
+      final map = Map<String, dynamic>.from(data);
+      map['id'] = (map['id'] ?? doc.id).toString();
+      map['codice'] = (map['codice'] ?? '').toString();
+      map['descrizione'] = (map['descrizione'] ?? '').toString();
+      map['cliente'] = (map['cliente'] ?? '').toString();
+      map['status'] = _normalizeCommessaStatus(map['status']);
+      map['isActive'] = map['isActive'] is bool ? map['isActive'] : true;
+      map['createdAt'] = _toIsoString(map['createdAt']) ?? _nowIso();
+      return Commessa.fromJson(map);
+    } catch (e) {
+      debugPrint('Skip commessa doc non valido (${doc.id}): $e');
       return null;
     }
   }
@@ -596,6 +697,22 @@ class FirebaseSyncService {
     }
   }
 
+  String _normalizeCommessaStatus(dynamic raw) {
+    final value = (raw ?? '').toString().trim().toLowerCase();
+    switch (value) {
+      case 'paused':
+      case 'in_pausa':
+      case 'pause':
+        return 'paused';
+      case 'closed':
+      case 'chiusa':
+      case 'archived':
+        return 'closed';
+      default:
+        return 'active';
+    }
+  }
+
   String? _toIsoString(dynamic value) {
     if (value == null) {
       return null;
@@ -609,6 +726,16 @@ class FirebaseSyncService {
     final asString = value.toString();
     final parsed = DateTime.tryParse(asString);
     return parsed?.toIso8601String();
+  }
+
+  double? _toDouble(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is num) {
+      return value.toDouble();
+    }
+    return double.tryParse(value.toString());
   }
 
   String _nowIso() => DateTime.now().toIso8601String();

@@ -7,6 +7,7 @@ class TimesheetEntry {
   final String id;
   final String userId;
   final String projectId;
+  final String? commessaId;
   final DateTime date;
   final double hours; // In 0.5 increments
   final String? notes;
@@ -17,6 +18,7 @@ class TimesheetEntry {
     required this.id,
     required this.userId,
     required this.projectId,
+    this.commessaId,
     required this.date,
     required this.hours,
     this.notes,
@@ -32,6 +34,7 @@ class TimesheetEntry {
     String? id,
     String? userId,
     String? projectId,
+    String? commessaId,
     DateTime? date,
     double? hours,
     String? notes,
@@ -42,6 +45,7 @@ class TimesheetEntry {
       id: id ?? this.id,
       userId: userId ?? this.userId,
       projectId: projectId ?? this.projectId,
+      commessaId: commessaId ?? this.commessaId,
       date: date ?? this.date,
       hours: hours ?? this.hours,
       notes: notes ?? this.notes,

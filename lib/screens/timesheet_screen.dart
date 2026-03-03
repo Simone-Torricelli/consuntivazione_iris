@@ -312,6 +312,9 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
     Project? selectedProject = entry != null
         ? dataService.getProjectById(entry.projectId)
         : null;
+    final availableCommesse = dataService.getActiveCommesse();
+    String? selectedCommessaId =
+        entry?.commessaId ?? selectedProject?.commessaId;
     if (selectedProject != null &&
         !availableProjects.any(
           (project) => project.id == selectedProject!.id,
@@ -400,12 +403,55 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                                 onChanged: (value) {
                                   setLocalState(() {
                                     selectedProject = value;
+                                    if (value?.commessaId != null &&
+                                        value!.commessaId!.trim().isNotEmpty) {
+                                      selectedCommessaId = value.commessaId;
+                                    } else if (!(value?.isBillable ?? false)) {
+                                      selectedCommessaId = null;
+                                    }
                                   });
                                 },
                                 validator: (value) => value == null
                                     ? 'Seleziona un progetto'
                                     : null,
                               ),
+                              if (selectedProject?.isBillable ?? false) ...[
+                                const SizedBox(height: 12),
+                                DropdownButtonFormField<String>(
+                                  initialValue: selectedCommessaId,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Commessa GECO',
+                                    prefixIcon: Icon(
+                                      Icons.business_center_outlined,
+                                    ),
+                                  ),
+                                  items: availableCommesse
+                                      .map(
+                                        (commessa) => DropdownMenuItem<String>(
+                                          value: commessa.id,
+                                          child: Text(
+                                            '${commessa.codice} • ${commessa.cliente}',
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (value) {
+                                    setLocalState(() {
+                                      selectedCommessaId = value;
+                                    });
+                                  },
+                                  validator: (value) {
+                                    if (!(selectedProject?.isBillable ??
+                                        false)) {
+                                      return null;
+                                    }
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Commessa obbligatoria';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ],
                               if (vacationProject != null) ...[
                                 const SizedBox(height: 10),
                                 Align(
@@ -416,6 +462,8 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                                         : () {
                                             setLocalState(() {
                                               selectedProject = vacationProject;
+                                              selectedCommessaId =
+                                                  vacationProject.commessaId;
                                               selectedHours = 8.0;
                                               if (notesController.text
                                                   .trim()
@@ -586,6 +634,7 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                                     id: 'entry_${DateTime.now().millisecondsSinceEpoch}',
                                     userId: userId,
                                     projectId: selectedProject!.id,
+                                    commessaId: selectedCommessaId,
                                     date: date,
                                     hours: selectedHours,
                                     notes: notesController.text.trim().isEmpty
@@ -600,6 +649,7 @@ class _TimeSheetScreenState extends State<TimeSheetScreen> {
                                 } else {
                                   final updatedEntry = entry.copyWith(
                                     projectId: selectedProject!.id,
+                                    commessaId: selectedCommessaId,
                                     hours: selectedHours,
                                     notes: notesController.text.trim().isEmpty
                                         ? null

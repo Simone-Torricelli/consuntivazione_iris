@@ -65,6 +65,43 @@ service cloud.firestore {
       return isAdmin() || isManager() || isTeamLead();
     }
 
+    function projectDocPath(projectId) {
+      return /databases/$(database)/documents/projects/$(projectId);
+    }
+
+    function commessaDocPath(commessaId) {
+      return /databases/$(database)/documents/commesse/$(commessaId);
+    }
+
+    function projectExists(projectId) {
+      return projectId is string &&
+          projectId.size() > 0 &&
+          exists(projectDocPath(projectId));
+    }
+
+    function projectIsBillable(projectId) {
+      return projectExists(projectId) &&
+          get(projectDocPath(projectId)).data.isBillable == true;
+    }
+
+    function commessaExists(commessaId) {
+      return commessaId is string &&
+          commessaId.size() > 0 &&
+          exists(commessaDocPath(commessaId));
+    }
+
+    function projectBillingIsValid(data) {
+      return !(data.isBillable == true) ||
+          commessaExists(data.commessaId);
+    }
+
+    function timesheetBillingIsValid(data) {
+      return projectExists(data.projectId) &&
+          (!(data.commessaId is string) || commessaExists(data.commessaId)) &&
+          (!projectIsBillable(data.projectId) ||
+              commessaExists(data.commessaId));
+    }
+
     function canManageTimesheets() {
       return isAdmin() || isManager() || isTeamLead();
     }
@@ -89,17 +126,21 @@ service cloud.firestore {
       allow read: if signedIn();
 
       allow create: if signedIn() && (
-          isAdmin() ||
-          isManager() ||
-          (isTeamLead() && request.resource.data.ownerUserId == request.auth.uid)
+          projectBillingIsValid(request.resource.data) && (
+            isAdmin() ||
+            isManager() ||
+            (isTeamLead() && request.resource.data.ownerUserId == request.auth.uid)
+          )
       );
 
       allow update: if signedIn() && (
-          isAdmin() ||
-          isManager() ||
-          (isTeamLead() &&
-              resource.data.ownerUserId == request.auth.uid &&
-              request.resource.data.ownerUserId == request.auth.uid)
+          projectBillingIsValid(request.resource.data) && (
+            isAdmin() ||
+            isManager() ||
+            (isTeamLead() &&
+                resource.data.ownerUserId == request.auth.uid &&
+                request.resource.data.ownerUserId == request.auth.uid)
+          )
       );
 
       allow delete: if signedIn() && (
@@ -109,19 +150,30 @@ service cloud.firestore {
       );
     }
 
+    match /commesse/{commessaId} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn() && canManageProjects();
+    }
+
     match /timesheet_entries/{entryId} {
       allow read: if signedIn();
 
       // Dev can write only own entries. Admin/Manager/TL can write all entries.
       allow create: if signedIn() && (
-          request.resource.data.userId == request.auth.uid ||
-          canManageTimesheets()
+          timesheetBillingIsValid(request.resource.data) &&
+          (
+            request.resource.data.userId == request.auth.uid ||
+            canManageTimesheets()
+          )
       );
 
       allow update: if signedIn() && (
-          ((resource.data.userId == request.auth.uid) &&
-              (request.resource.data.userId == request.auth.uid)) ||
-          canManageTimesheets()
+          timesheetBillingIsValid(request.resource.data) &&
+          (
+            ((resource.data.userId == request.auth.uid) &&
+                (request.resource.data.userId == request.auth.uid)) ||
+            canManageTimesheets()
+          )
       );
 
       allow delete: if signedIn() && (

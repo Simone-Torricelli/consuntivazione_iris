@@ -11,7 +11,6 @@ import '../services/auth_service.dart';
 import '../services/data_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
-import '../widgets/project_card.dart';
 import 'person_detail_screen.dart';
 import 'project_detail_screen.dart';
 
@@ -106,6 +105,61 @@ class WebDashboardScreen extends StatelessWidget {
       0,
       (sum, value) => sum + value,
     );
+    final monthReference = DateTime(now.year, now.month, 1);
+    final kpiUsers = switch (currentUser.role) {
+      UserRole.admin =>
+        dataService.users
+            .where(
+              (u) =>
+                  u.isActive &&
+                  (u.role == UserRole.employee ||
+                      (u.role == UserRole.admin &&
+                          u.teamLeadId != null &&
+                          u.teamLeadId!.trim().isNotEmpty)),
+            )
+            .toList(),
+      UserRole.manager => dataService.getDevelopersForManager(currentUser.id),
+      UserRole.teamLead => dataService.getDevelopersForTeamLead(currentUser.id),
+      UserRole.employee => <User>[currentUser],
+    };
+    final monthlyKpi = dataService.getMonthlyKpiForUsers(
+      users: kpiUsers,
+      monthReference: monthReference,
+    );
+
+    final economicRows =
+        visibleProjects
+            .map((project) {
+              final cost = dataService.getProjectConsumedCost(
+                project.id,
+                startDate: monthStart,
+                endDate: monthEnd,
+              );
+              final revenue = dataService.getProjectEstimatedRevenue(
+                project.id,
+                startDate: monthStart,
+                endDate: monthEnd,
+              );
+              final margin = dataService.getProjectGrossMargin(
+                project.id,
+                startDate: monthStart,
+                endDate: monthEnd,
+              );
+              return _WebProjectEconomicRow(
+                projectName: project.name,
+                consumedCost: cost,
+                estimatedRevenue: revenue,
+                grossMargin: margin,
+              );
+            })
+            .where(
+              (row) =>
+                  row.consumedCost > 0 ||
+                  row.estimatedRevenue > 0 ||
+                  row.grossMargin != 0,
+            )
+            .toList()
+          ..sort((a, b) => b.consumedCost.compareTo(a.consumedCost));
 
     return DecoratedBox(
       decoration: const BoxDecoration(gradient: AppTheme.appBackgroundGradient),
@@ -117,178 +171,199 @@ class WebDashboardScreen extends StatelessWidget {
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AnimatedReveal(
-                delay: const Duration(milliseconds: 50),
-                child: _WebHeroCard(
-                  user: currentUser,
-                  isSalaryDay: isSalaryDay,
-                  salaryDay: salaryDay,
-                  onOpenTimesheet: onOpenTimesheet,
-                  onOpenCalendar: onOpenCalendar,
-                  onOpenTeam: onOpenTeam,
-                  onOpenProfile: onOpenProfile,
-                ),
-              ),
-              const SizedBox(height: 14),
-              AnimatedReveal(
-                delay: const Duration(milliseconds: 100),
-                child: Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _MetricTile(
-                      title: 'Ore mese',
-                      value: currentUserHours.toStringAsFixed(1),
-                      subtitle: 'Tuo totale',
-                      icon: Icons.timer_outlined,
-                      color: const Color(0xFF1958FF),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1440),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AnimatedReveal(
+                    delay: const Duration(milliseconds: 50),
+                    child: _WebHeroCard(
+                      user: currentUser,
+                      isSalaryDay: isSalaryDay,
+                      salaryDay: salaryDay,
+                      onOpenTimesheet: onOpenTimesheet,
+                      onOpenCalendar: onOpenCalendar,
+                      onOpenTeam: onOpenTeam,
+                      onOpenProfile: onOpenProfile,
                     ),
-                    _MetricTile(
-                      title: 'Progetti visibili',
-                      value: '${visibleProjects.length}',
-                      subtitle: 'Attivi',
-                      icon: Icons.folder_open_outlined,
-                      color: const Color(0xFFFF7A18),
+                  ),
+                  const SizedBox(height: 12),
+                  if (currentUser.role != UserRole.employee) ...[
+                    AnimatedReveal(
+                      delay: const Duration(milliseconds: 85),
+                      child: _WebOfficialKpiPanel(kpi: monthlyKpi),
                     ),
-                    _MetricTile(
-                      title: 'Streak',
-                      value: '$currentUserStreak',
-                      subtitle: 'giorni perfetti',
-                      icon: Icons.local_fire_department_outlined,
-                      color: const Color(0xFF06A77D),
+                    const SizedBox(height: 12),
+                  ],
+                  AnimatedReveal(
+                    delay: const Duration(milliseconds: 100),
+                    child: Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        _MetricTile(
+                          title: 'Ore mese',
+                          value: currentUserHours.toStringAsFixed(1),
+                          subtitle: 'Tuo totale',
+                          icon: Icons.timer_outlined,
+                          color: const Color(0xFF1958FF),
+                        ),
+                        _MetricTile(
+                          title: 'Progetti visibili',
+                          value: '${visibleProjects.length}',
+                          subtitle: 'Attivi',
+                          icon: Icons.folder_open_outlined,
+                          color: const Color(0xFFFF7A18),
+                        ),
+                        _MetricTile(
+                          title: 'Streak',
+                          value: '$currentUserStreak',
+                          subtitle: 'giorni perfetti',
+                          icon: Icons.local_fire_department_outlined,
+                          color: const Color(0xFF06A77D),
+                        ),
+                        _MetricTile(
+                          title: 'XP mese',
+                          value: '$monthlyXp',
+                          subtitle: 'progressione',
+                          icon: Icons.stars_outlined,
+                          color: const Color(0xFF6A35FF),
+                        ),
+                        _MetricTile(
+                          title: 'Membri team',
+                          value: '${teamMembers.length}',
+                          subtitle: currentUser.role.displayName,
+                          icon: Icons.groups_2_outlined,
+                          color: const Color(0xFF2E3440),
+                        ),
+                        _MetricTile(
+                          title: 'Giorni perfetti',
+                          value: '$currentUserPerfectDays',
+                          subtitle: DateFormat('MMMM', 'it').format(now),
+                          icon: Icons.verified_outlined,
+                          color: const Color(0xFFB66A29),
+                        ),
+                      ],
                     ),
-                    _MetricTile(
-                      title: 'XP mese',
-                      value: '$monthlyXp',
-                      subtitle: 'progressione',
-                      icon: Icons.stars_outlined,
-                      color: const Color(0xFF6A35FF),
-                    ),
-                    _MetricTile(
-                      title: 'Membri team',
-                      value: '${teamMembers.length}',
-                      subtitle: currentUser.role.displayName,
-                      icon: Icons.groups_2_outlined,
-                      color: const Color(0xFF2E3440),
-                    ),
-                    _MetricTile(
-                      title: 'Giorni perfetti',
-                      value: '$currentUserPerfectDays',
-                      subtitle: DateFormat('MMMM', 'it').format(now),
-                      icon: Icons.verified_outlined,
-                      color: const Color(0xFFB66A29),
+                  ),
+                  const SizedBox(height: 16),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final twoColumns = constraints.maxWidth >= 1120;
+                      if (!twoColumns) {
+                        return Column(
+                          children: [
+                            AnimatedReveal(
+                              delay: const Duration(milliseconds: 140),
+                              child: _ProjectDistributionCard(
+                                projects: visibleProjects,
+                                projectHours: projectHours,
+                                totalHours: totalVisibleHours,
+                                parseColor: _parseColor,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            AnimatedReveal(
+                              delay: const Duration(milliseconds: 160),
+                              child: _TrendCard(last7Days: last7Days, now: now),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: AnimatedReveal(
+                              delay: const Duration(milliseconds: 140),
+                              child: _ProjectDistributionCard(
+                                projects: visibleProjects,
+                                projectHours: projectHours,
+                                totalHours: totalVisibleHours,
+                                parseColor: _parseColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: AnimatedReveal(
+                              delay: const Duration(milliseconds: 160),
+                              child: _TrendCard(last7Days: last7Days, now: now),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  if (currentUser.role != UserRole.employee &&
+                      economicRows.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    AnimatedReveal(
+                      delay: const Duration(milliseconds: 180),
+                      child: _WebEconomicPanel(rows: economicRows),
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final twoColumns = constraints.maxWidth >= 1120;
-                  if (!twoColumns) {
-                    return Column(
-                      children: [
-                        AnimatedReveal(
-                          delay: const Duration(milliseconds: 140),
-                          child: _ProjectDistributionCard(
-                            projects: visibleProjects,
-                            projectHours: projectHours,
-                            totalHours: totalVisibleHours,
-                            parseColor: _parseColor,
+                  const SizedBox(height: 16),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final twoColumns = constraints.maxWidth >= 1120;
+                      final projectPanel = _ProjectListCard(
+                        projects: visibleProjects,
+                        topProjects: topProjects,
+                        parseColor: _parseColor,
+                      );
+                      final peoplePanel = _TeamFocusCard(
+                        rows: teamRows,
+                        targetHoursPerMember: targetHoursPerMember,
+                      );
+
+                      if (!twoColumns) {
+                        return Column(
+                          children: [
+                            AnimatedReveal(
+                              delay: const Duration(milliseconds: 200),
+                              child: projectPanel,
+                            ),
+                            const SizedBox(height: 12),
+                            AnimatedReveal(
+                              delay: const Duration(milliseconds: 230),
+                              child: peoplePanel,
+                            ),
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: AnimatedReveal(
+                              delay: const Duration(milliseconds: 200),
+                              child: projectPanel,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        AnimatedReveal(
-                          delay: const Duration(milliseconds: 160),
-                          child: _TrendCard(last7Days: last7Days, now: now),
-                        ),
-                      ],
-                    );
-                  }
-
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: AnimatedReveal(
-                          delay: const Duration(milliseconds: 140),
-                          child: _ProjectDistributionCard(
-                            projects: visibleProjects,
-                            projectHours: projectHours,
-                            totalHours: totalVisibleHours,
-                            parseColor: _parseColor,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: AnimatedReveal(
+                              delay: const Duration(milliseconds: 230),
+                              child: peoplePanel,
+                            ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: AnimatedReveal(
-                          delay: const Duration(milliseconds: 160),
-                          child: _TrendCard(last7Days: last7Days, now: now),
-                        ),
-                      ),
-                    ],
-                  );
-                },
+                        ],
+                      );
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final twoColumns = constraints.maxWidth >= 1120;
-                  final projectPanel = _ProjectListCard(
-                    projects: visibleProjects,
-                    topProjects: topProjects,
-                    parseColor: _parseColor,
-                  );
-                  final peoplePanel = _TeamFocusCard(
-                    rows: teamRows,
-                    targetHoursPerMember: targetHoursPerMember,
-                  );
-
-                  if (!twoColumns) {
-                    return Column(
-                      children: [
-                        AnimatedReveal(
-                          delay: const Duration(milliseconds: 200),
-                          child: projectPanel,
-                        ),
-                        const SizedBox(height: 12),
-                        AnimatedReveal(
-                          delay: const Duration(milliseconds: 230),
-                          child: peoplePanel,
-                        ),
-                      ],
-                    );
-                  }
-
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: AnimatedReveal(
-                          delay: const Duration(milliseconds: 200),
-                          child: projectPanel,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: AnimatedReveal(
-                          delay: const Duration(milliseconds: 230),
-                          child: peoplePanel,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -481,9 +556,9 @@ class _MetricTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 180, maxWidth: 240),
+      constraints: const BoxConstraints(minWidth: 160, maxWidth: 210),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
@@ -499,20 +574,20 @@ class _MetricTile extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 34,
+              height: 34,
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(11),
               ),
-              child: Icon(icon, color: color),
+              child: Icon(icon, color: color, size: 18),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(value, style: AppTheme.heading3),
+                  Text(value, style: AppTheme.heading3.copyWith(fontSize: 20)),
                   Text(title, style: AppTheme.bodySmall),
                   Text(
                     subtitle,
@@ -560,9 +635,22 @@ class _ProjectDistributionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Distribuzione ore per progetto',
-            style: AppTheme.heading3,
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Distribuzione ore per progetto',
+                  style: AppTheme.heading3,
+                ),
+              ),
+              Text(
+                'Totale ${totalHours.toStringAsFixed(1)}h',
+                style: AppTheme.bodySmall.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textSecondaryColor,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           if (totalHours <= 0)
@@ -638,7 +726,7 @@ class _ProjectDistributionCard extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              '${entry.value.toStringAsFixed(1)}h',
+                              '${((entry.value / totalHours) * 100).toStringAsFixed(0)}% • ${entry.value.toStringAsFixed(1)}h',
                               style: AppTheme.caption,
                             ),
                           ],
@@ -672,6 +760,8 @@ class _TrendCard extends StatelessWidget {
       8.0,
       (maxValue, day) => math.max(maxValue, (last7Days[day] ?? 0) + 2),
     );
+    final total = last7Days.values.fold<double>(0, (sum, value) => sum + value);
+    final avg = total / days.length;
 
     return Container(
       width: double.infinity,
@@ -685,6 +775,24 @@ class _TrendCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Trend ore ultimi 7 giorni', style: AppTheme.heading3),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              _LegendPill(
+                color: const Color(0xFF1958FF),
+                text: 'Ore giornaliere',
+              ),
+              Text(
+                'Media ${avg.toStringAsFixed(1)}h',
+                style: AppTheme.bodySmall.copyWith(
+                  color: AppTheme.textSecondaryColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           SizedBox(
             height: 220,
@@ -692,11 +800,27 @@ class _TrendCard extends StatelessWidget {
               BarChartData(
                 alignment: BarChartAlignment.spaceAround,
                 maxY: maxY,
-                gridData: const FlGridData(show: false),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: math.max(2, (maxY / 4).ceilToDouble()),
+                ),
                 borderData: FlBorderData(show: false),
                 titlesData: FlTitlesData(
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 26,
+                      getTitlesWidget: (value, meta) {
+                        if (value == 0) {
+                          return const SizedBox.shrink();
+                        }
+                        return Text(
+                          value.toStringAsFixed(0),
+                          style: AppTheme.caption,
+                        );
+                      },
+                    ),
                   ),
                   rightTitles: const AxisTitles(
                     sideTitles: SideTitles(showTitles: false),
@@ -792,11 +916,9 @@ class _ProjectListCard extends StatelessWidget {
                     final project = projects.firstWhere(
                       (element) => element.id == item.key,
                     );
-                    return ProjectCard(
-                      name: project.name,
-                      description:
-                          '${project.description} • ${item.value.toStringAsFixed(1)}h',
-                      color: parseColor(project.color),
+                    final color = parseColor(project.color);
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(12),
                       onTap: () {
                         Navigator.push(
                           context,
@@ -806,11 +928,284 @@ class _ProjectListCard extends StatelessWidget {
                           ),
                         );
                       },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE5EDF9)),
+                          color: Colors.white,
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: color,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                project.name,
+                                style: AppTheme.bodyMedium.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '${item.value.toStringAsFixed(1)}h',
+                              style: AppTheme.bodySmall.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.chevron_right, size: 16),
+                          ],
+                        ),
+                      ),
                     );
                   },
                 ),
               ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _WebOfficialKpiPanel extends StatelessWidget {
+  final TeamMonthlyKpi kpi;
+
+  const _WebOfficialKpiPanel({required this.kpi});
+
+  @override
+  Widget build(BuildContext context) {
+    final completion = (kpi.completionRate * 100).toStringAsFixed(0);
+    final saturation = (kpi.saturationRate * 100).toStringAsFixed(0);
+    final quality = (kpi.qualityScore * 100).toStringAsFixed(0);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFDCE8F9)),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _KpiChip(
+            label: 'Completion',
+            value: '$completion%',
+            alert: kpi.completionRate < 0.85,
+          ),
+          _KpiChip(
+            label: 'Saturazione',
+            value: '$saturation%',
+            alert: kpi.saturationRate > 1.10 || kpi.saturationRate < 0.70,
+          ),
+          _KpiChip(
+            label: 'Over/Under',
+            value: '${kpi.overtimeUnderTimeHours.toStringAsFixed(1)}h',
+            alert: false,
+          ),
+          _KpiChip(
+            label: 'DSO',
+            value: '${kpi.dsoAverageDays.toStringAsFixed(2)} gg',
+            alert: kpi.dsoAverageDays > 1.0,
+          ),
+          _KpiChip(
+            label: 'Quality',
+            value: '$quality%',
+            alert: kpi.qualityScore < 0.70,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KpiChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool alert;
+
+  const _KpiChip({
+    required this.label,
+    required this.value,
+    required this.alert,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = alert ? AppTheme.errorColor : AppTheme.primaryColor;
+    return Container(
+      constraints: const BoxConstraints(minWidth: 140),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: AppTheme.caption),
+          Text(
+            value,
+            style: AppTheme.bodyLarge.copyWith(
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WebProjectEconomicRow {
+  final String projectName;
+  final double consumedCost;
+  final double estimatedRevenue;
+  final double grossMargin;
+
+  const _WebProjectEconomicRow({
+    required this.projectName,
+    required this.consumedCost,
+    required this.estimatedRevenue,
+    required this.grossMargin,
+  });
+}
+
+class _WebEconomicPanel extends StatelessWidget {
+  final List<_WebProjectEconomicRow> rows;
+
+  const _WebEconomicPanel({required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    final totalCost = rows.fold<double>(
+      0,
+      (sum, row) => sum + row.consumedCost,
+    );
+    final totalRevenue = rows.fold<double>(
+      0,
+      (sum, row) => sum + row.estimatedRevenue,
+    );
+    final totalMargin = rows.fold<double>(
+      0,
+      (sum, row) => sum + row.grossMargin,
+    );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFDCE8F9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Economico mese (stima)', style: AppTheme.heading3),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            children: [
+              _LegendPill(
+                color: const Color(0xFF1958FF),
+                text: 'Costo ${totalCost.toStringAsFixed(0)}€',
+              ),
+              _LegendPill(
+                color: const Color(0xFF06A77D),
+                text: 'Ricavo ${totalRevenue.toStringAsFixed(0)}€',
+              ),
+              _LegendPill(
+                color: totalMargin >= 0
+                    ? const Color(0xFF22C55E)
+                    : AppTheme.errorColor,
+                text: 'Margine ${totalMargin.toStringAsFixed(0)}€',
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...rows
+              .take(5)
+              .map(
+                (row) => Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFE7EEF9)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          row.projectName,
+                          style: AppTheme.bodySmall.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        'C ${row.consumedCost.toStringAsFixed(0)}€',
+                        style: AppTheme.caption,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'R ${row.estimatedRevenue.toStringAsFixed(0)}€',
+                        style: AppTheme.caption,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegendPill extends StatelessWidget {
+  final Color color;
+  final String text;
+
+  const _LegendPill({required this.color, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(text, style: AppTheme.caption),
         ],
       ),
     );

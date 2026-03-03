@@ -567,6 +567,60 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       0,
       (sum, row) => sum + row.grossMargin,
     );
+    final quickActions = <_QuickActionConfig>[
+      if (authService.isAdmin)
+        _QuickActionConfig(
+          title: 'Console utenti',
+          subtitle: 'Assegna ruoli, TL e membri team',
+          icon: Icons.admin_panel_settings_outlined,
+          color: AppTheme.primaryColor,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ManageUsersScreen()),
+            );
+          },
+        ),
+      _QuickActionConfig(
+        title: 'Gestisci Progetti',
+        subtitle: 'Aggiorna backlog progetti e assegnazioni',
+        icon: Icons.folder_copy_outlined,
+        color: AppTheme.secondaryColor,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ManageProjectsScreen()),
+          );
+        },
+      ),
+      if (currentUser.role != UserRole.employee)
+        _QuickActionConfig(
+          title: 'Commesse GECO',
+          subtitle: 'Anagrafica commesse e stato',
+          icon: Icons.business_center_outlined,
+          color: AppTheme.accentColor,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ManageCommesseScreen()),
+            );
+          },
+        ),
+      if (currentUser.role == UserRole.manager ||
+          currentUser.role == UserRole.teamLead)
+        _QuickActionConfig(
+          title: 'Il mio team',
+          subtitle: 'Vedi struttura e persone assegnate',
+          icon: Icons.groups_outlined,
+          color: AppTheme.successColor,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TeamOverviewScreen()),
+            );
+          },
+        ),
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -694,57 +748,73 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   const SizedBox(height: 16),
                   AnimatedReveal(
                     delay: const Duration(milliseconds: 120),
-                    child: GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1.32,
-                      children: [
-                        StatCard(
-                          title: 'Membri Team',
-                          value: teamMembers.length.toString(),
-                          icon: Icons.people_alt_outlined,
-                          color: AppTheme.primaryColor,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => authService.isAdmin
-                                    ? const ManageUsersScreen()
-                                    : const TeamOverviewScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                        StatCard(
-                          title: 'Ore Team Mese',
-                          value: teamHours.toStringAsFixed(1),
-                          icon: Icons.timer_outlined,
-                          color: AppTheme.secondaryColor,
-                        ),
-                        StatCard(
-                          title: 'Completion Medio',
-                          value: '${(avgCompletion * 100).round()}%',
-                          icon: Icons.speed,
-                          color: AppTheme.successColor,
-                        ),
-                        StatCard(
-                          title: 'Progetti Attivi',
-                          value: projects.length.toString(),
-                          icon: Icons.folder_open,
-                          color: AppTheme.accentColor,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const ManageProjectsScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final width = constraints.maxWidth;
+                        final crossAxisCount = width >= 1450
+                            ? 4
+                            : width >= 1100
+                            ? 3
+                            : 2;
+                        final aspectRatio = width >= 1450
+                            ? 2.15
+                            : width >= 1100
+                            ? 1.75
+                            : 1.32;
+                        return GridView.count(
+                          crossAxisCount: crossAxisCount,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: aspectRatio,
+                          children: [
+                            StatCard(
+                              title: 'Membri Team',
+                              value: teamMembers.length.toString(),
+                              icon: Icons.people_alt_outlined,
+                              color: AppTheme.primaryColor,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => authService.isAdmin
+                                        ? const ManageUsersScreen()
+                                        : const TeamOverviewScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                            StatCard(
+                              title: 'Ore Team Mese',
+                              value: teamHours.toStringAsFixed(1),
+                              icon: Icons.timer_outlined,
+                              color: AppTheme.secondaryColor,
+                            ),
+                            StatCard(
+                              title: 'Completion Medio',
+                              value: '${(avgCompletion * 100).round()}%',
+                              icon: Icons.speed,
+                              color: AppTheme.successColor,
+                            ),
+                            StatCard(
+                              title: 'Progetti Attivi',
+                              value: projects.length.toString(),
+                              icon: Icons.folder_open,
+                              color: AppTheme.accentColor,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const ManageProjectsScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                   if (topContributor != null) ...[
@@ -825,7 +895,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ),
                     ),
                   ],
-                  if (currentUser.role == UserRole.teamLead &&
+                  if ((currentUser.role == UserRole.teamLead ||
+                          currentUser.role == UserRole.manager ||
+                          currentUser.role == UserRole.admin) &&
                       projects.isNotEmpty) ...[
                     const SizedBox(height: 20),
                     AnimatedReveal(
@@ -972,72 +1044,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   const SizedBox(height: 20),
                   const Text('Azioni rapide', style: AppTheme.heading3),
                   const SizedBox(height: 10),
-                  if (authService.isAdmin) ...[
-                    _QuickActionCard(
-                      title: 'Console utenti',
-                      subtitle: 'Assegna ruoli, TL e membri team',
-                      icon: Icons.admin_panel_settings_outlined,
-                      color: AppTheme.primaryColor,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ManageUsersScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  _QuickActionCard(
-                    title: 'Gestisci Progetti',
-                    subtitle: 'Aggiorna backlog progetti e assegnazioni',
-                    icon: Icons.folder_copy_outlined,
-                    color: AppTheme.secondaryColor,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const ManageProjectsScreen(),
-                        ),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final maxCardWidth = constraints.maxWidth >= 1200
+                          ? 420.0
+                          : constraints.maxWidth >= 900
+                          ? 360.0
+                          : constraints.maxWidth;
+                      return Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: quickActions
+                            .map(
+                              (action) => SizedBox(
+                                width: maxCardWidth,
+                                child: _QuickActionCard(
+                                  title: action.title,
+                                  subtitle: action.subtitle,
+                                  icon: action.icon,
+                                  color: action.color,
+                                  onTap: action.onTap,
+                                ),
+                              ),
+                            )
+                            .toList(),
                       );
                     },
                   ),
-                  if (currentUser.role != UserRole.employee) ...[
-                    const SizedBox(height: 10),
-                    _QuickActionCard(
-                      title: 'Commesse GECO',
-                      subtitle: 'Anagrafica commesse e stato',
-                      icon: Icons.business_center_outlined,
-                      color: AppTheme.accentColor,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ManageCommesseScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                  if (currentUser.role == UserRole.manager ||
-                      currentUser.role == UserRole.teamLead) ...[
-                    const SizedBox(height: 10),
-                    _QuickActionCard(
-                      title: 'Il mio team',
-                      subtitle: 'Vedi struttura e persone assegnate',
-                      icon: Icons.groups_outlined,
-                      color: AppTheme.successColor,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const TeamOverviewScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
                   if (projects.isNotEmpty) ...[
                     const SizedBox(height: 20),
                     Row(
@@ -1123,6 +1156,9 @@ class _ProjectAnalyticsPanel extends StatelessWidget {
     final totalHours = projectHours.values.fold<double>(0, (sum, h) => sum + h);
     final sortedProjectHours = projectHours.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
+    final topProjects = sortedProjectHours
+        .where((entry) => entry.value > 0)
+        .take(5);
 
     final now = DateTime.now();
     final start = DateUtils.dateOnly(now.subtract(const Duration(days: 6)));
@@ -1130,6 +1166,18 @@ class _ProjectAnalyticsPanel extends StatelessWidget {
       7,
       (index) => start.add(Duration(days: index)),
     );
+    final maxTrend = trendDays.fold<double>(
+      8,
+      (maxValue, day) => (last7DaysDailyHours[day] ?? 0) > maxValue
+          ? (last7DaysDailyHours[day] ?? 0) + 2
+          : maxValue,
+    );
+    final avgTrend =
+        trendDays.fold<double>(
+          0,
+          (sum, day) => sum + (last7DaysDailyHours[day] ?? 0),
+        ) /
+        trendDays.length;
 
     return Container(
       width: double.infinity,
@@ -1142,11 +1190,29 @@ class _ProjectAnalyticsPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Analytics Progetti TL', style: AppTheme.heading3),
+          const Text('Analytics Progetti', style: AppTheme.heading3),
           const SizedBox(height: 4),
           Text(
             'Andamento ore ultimi 7 giorni + distribuzione ore per progetto.',
             style: AppTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            children: [
+              _LegendPill(
+                color: AppTheme.primaryColor,
+                text: 'Ore giornaliere',
+              ),
+              Text(
+                'Media ${avgTrend.toStringAsFixed(1)}h',
+                style: AppTheme.bodySmall.copyWith(
+                  color: AppTheme.textSecondaryColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -1154,12 +1220,28 @@ class _ProjectAnalyticsPanel extends StatelessWidget {
             child: BarChart(
               BarChartData(
                 alignment: BarChartAlignment.spaceAround,
-                maxY: 8.0 * (projects.isEmpty ? 1 : projects.length),
-                gridData: const FlGridData(show: false),
+                maxY: maxTrend,
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: (maxTrend / 4).clamp(2, 20),
+                ),
                 borderData: FlBorderData(show: false),
                 titlesData: FlTitlesData(
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 24,
+                      getTitlesWidget: (value, meta) {
+                        if (value <= 0) {
+                          return const SizedBox.shrink();
+                        }
+                        return Text(
+                          value.toStringAsFixed(0),
+                          style: AppTheme.caption,
+                        );
+                      },
+                    ),
                   ),
                   rightTitles: const AxisTitles(
                     sideTitles: SideTitles(showTitles: false),
@@ -1214,16 +1296,15 @@ class _ProjectAnalyticsPanel extends StatelessWidget {
               ),
             )
           else
-            SizedBox(
-              height: 190,
-              child: PieChart(
-                PieChartData(
-                  sectionsSpace: 2,
-                  centerSpaceRadius: 34,
-                  sections: sortedProjectHours
-                      .where((entry) => entry.value > 0)
-                      .take(5)
-                      .map((entry) {
+            Column(
+              children: [
+                SizedBox(
+                  height: 190,
+                  child: PieChart(
+                    PieChartData(
+                      sectionsSpace: 2,
+                      centerSpaceRadius: 34,
+                      sections: topProjects.map((entry) {
                         final project = projects.firstWhere(
                           (p) => p.id == entry.key,
                         );
@@ -1239,11 +1320,58 @@ class _ProjectAnalyticsPanel extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                           ),
                         );
-                      })
-                      .toList(),
+                      }).toList(),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: topProjects.map((entry) {
+                    final project = projects.firstWhere(
+                      (p) => p.id == entry.key,
+                    );
+                    final color = parseColor(project.color);
+                    return _LegendPill(
+                      color: color,
+                      text:
+                          '${project.name} ${((entry.value / totalHours) * 100).toStringAsFixed(0)}%',
+                    );
+                  }).toList(),
+                ),
+              ],
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegendPill extends StatelessWidget {
+  final Color color;
+  final String text;
+
+  const _LegendPill({required this.color, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(text, style: AppTheme.caption),
         ],
       ),
     );
@@ -1903,6 +2031,22 @@ class _HighlightChip extends StatelessWidget {
       ),
     );
   }
+}
+
+class _QuickActionConfig {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickActionConfig({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
 }
 
 class _QuickActionCard extends StatelessWidget {

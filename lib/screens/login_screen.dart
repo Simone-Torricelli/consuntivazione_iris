@@ -204,30 +204,20 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: AppTheme.primaryColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Column(
+                      child: Row(
                         children: [
-                          const Row(
-                            children: [
-                              Icon(
-                                Icons.info_outline,
-                                color: AppTheme.primaryColor,
-                                size: 20,
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                'Credenziali Demo',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
-                            ],
+                          const Icon(
+                            Icons.info_outline,
+                            color: AppTheme.primaryColor,
+                            size: 20,
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Email: admin@iris.com\nPassword: admin@iris.com',
-                            style: AppTheme.bodySmall.copyWith(
-                              color: AppTheme.textPrimaryColor,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Se non hai le credenziali, contatta un amministratore.',
+                              style: AppTheme.bodySmall.copyWith(
+                                color: AppTheme.textPrimaryColor,
+                              ),
                             ),
                           ),
                         ],
